@@ -1,0 +1,30 @@
+# Data files
+data/input/*
+data/processed/*
+data/output/reports/*
+data/output/plots/*
+data/verification/*
+
+# Keep directory structure
+!data/input/.gitkeep
+!data/processed/.gitkeep
+!data/output/reports/.gitkeep
+!data/output/plots/.gitkeep
+!data/verification/.gitkeep
+
+# R specific
+.Rhistory
+.RData
+.Rproj.user
+*.Rproj
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

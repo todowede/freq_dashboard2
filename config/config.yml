@@ -1,0 +1,53 @@
+# ------------------------------------------------------------------
+# config.yml: Central Configuration for the NESO Analysis Pipeline
+# ------------------------------------------------------------------
+
+# 1. PATHS
+paths:
+  input: "data/input"
+  processed: "data/processed"
+  output_reports: "data/output/reports"
+  output_plots: "data/output/plots"
+
+# 2. PARAMETERS
+parameters:
+  verbose_logging: true 
+  start_month: "2025-05"
+  end_month: "2025-08"
+  
+  # **NEW**: Parameters specific to the data acquisition step
+  data_acquisition:
+    api_url: "https://api.neso.energy/api/3/action/datapackage_show?id=system-frequency-data"
+
+  event_detection:
+    window_seconds: 15
+    delta_f_hz: 0.1
+    rocof_p99_hz_s: 0.01
+    
+    # Verification plotting options
+    verification_plots:
+      enabled: true
+      strategy: "worst_N"    # Options: "all", "top_N", "random_N", "worst_N", "best_N"
+      count: 10              # Number of plots when using N-based strategies
+      sort_by: "severity"    # Options: "severity", "abs_freq_change", "rocof_p99", "chronological"
+      plot_width: 12         # Plot width in inches
+      plot_height: 5         # Plot height in inches
+      plot_dpi: 150          # Plot resolution
+
+  kpi_monitoring:
+    rocof_ref_hz_s: 0.02
+    freq_dev_red: 0.15
+    freq_dev_amber: 0.125
+    freq_dev_blue: 0.10
+    # ... other parameters ...
+
+# 3. WORKFLOW: Define the default execution order.
+#    **MODIFIED**: `data_acquisition` is now the first step.
+workflow_steps:
+  - "data_acquisition"
+  - "data_loader"
+  - "frequency_processor"
+  - "event_detection"
+  - "kpi_monitoring"
+  - "frequency_excursion"
+  - "reporting"
