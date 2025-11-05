@@ -127,6 +127,48 @@ main <- function(config, cli_steps) {
              }
            },
 
+           "response_holding" = {
+             run_response_holding(config)
+           },
+
+           "demand_analysis" = {
+             # Load event results if available for correlation
+             event_path <- file.path(config$paths$output_reports, "sp_boundary_events.csv")
+             event_results <- if (file.exists(event_path)) {
+               fread(event_path)
+             } else {
+               NULL
+             }
+             run_demand_analysis(event_results, config)
+           },
+
+           "unforeseen_demand" = {
+             # Requires both demand_analysis and event_detection outputs
+             run_unforeseen_demand_analysis(config)
+           },
+
+           "imbalance_calculation" = {
+             # Requires processed frequency data and event results
+             if (!exists("processed_data", envir = workflow_env)) {
+               cat("WARN: Loading processed frequency data from file...\n")
+               freq_path <- file.path(config$paths$processed, "frequency_per_second_with_rocof.csv")
+               if (file.exists(freq_path)) {
+                 workflow_env$processed_data <- fread(freq_path)
+                 workflow_env$processed_data[, dtm_sec := as.POSIXct(dtm_sec)]
+               } else {
+                 stop("ERROR: Cannot run 'imbalance_calculation'. Frequency data not found.", call. = FALSE)
+               }
+             }
+
+             event_path <- file.path(config$paths$output_reports, "sp_boundary_events.csv")
+             if (!file.exists(event_path)) {
+               stop("ERROR: Cannot run 'imbalance_calculation'. Event detection must be run first.", call. = FALSE)
+             }
+
+             event_results <- fread(event_path)
+             run_imbalance_calculation(workflow_env$processed_data, event_results, config)
+           },
+
            "reporting" = {
              generate_reports(config)
            },

@@ -8,6 +8,7 @@ paths:
   processed: "data/processed"
   output_reports: "data/output/reports"
   output_plots: "data/output/plots"
+  output_imbalance: "data/output/imbalance"
 
 # 2. PARAMETERS
 parameters:
@@ -41,6 +42,43 @@ parameters:
     freq_dev_blue: 0.10
     # ... other parameters ...
 
+  # Imbalance calculation parameters
+  imbalance_calculation:
+    calculate_for_red_events_only: true
+    event_selection:
+      mode: "all"              # Options: "all", "top_n", "severity_filter", "combined"
+      max_events: 100          # Cap number of events (0 = no cap)
+      min_severity: 5          # Minimum severity threshold
+    system_data:
+      inertia_source: "data/input/system_inertia.csv"
+      demand_source: "data/input/system_demand.csv"
+      response_source: "data/output/reports/system_dynamics_review.csv"
+    demand_damping_percent_per_hz: 2.5    # Natural demand damping coefficient
+    default_inertia_gvas: 150             # Default if inertia data unavailable
+    default_demand_mw: 35000              # Default if demand data unavailable
+
+  # Demand analysis parameters
+  demand_analysis:
+    metrics:
+      - "ND"                    # National Demand
+      - "TSD"                   # Transmission System Demand
+      - "ENGLAND_WALES_DEMAND"  # England & Wales Demand
+    analyze_demand_changes: true          # Calculate ΔMW across SP boundaries
+    correlate_with_events: true           # Correlate with frequency events
+
+  # Unforeseen demand change analysis parameters
+  # Separates market-driven demand changes from natural demand damping
+  unforeseen_demand:
+    enabled: true
+    demand_damping:
+      percentage_per_hz: 0.025  # 2.5% of demand per Hz (NESO standard: pph = 0.025)
+      apply_direction: true     # Use frequency trend to determine damping sign
+    statistical_threshold:
+      sd_multiplier: 2.5        # Flag if |change - hourly_mean| > k × hourly_SD
+    causality:
+      demand_threshold_mw: 800  # Threshold for "large" demand change
+      freq_threshold_hz: 0.05   # Threshold for "large" frequency change
+
 # 3. WORKFLOW: Define the default execution order.
 #    **MODIFIED**: `data_acquisition` is now the first step.
 workflow_steps:
@@ -50,4 +88,8 @@ workflow_steps:
   - "event_detection"
   - "kpi_monitoring"
   - "frequency_excursion"
+  - "response_holding"
+  - "demand_analysis"
+  - "unforeseen_demand"
+  - "imbalance_calculation"
   - "reporting"

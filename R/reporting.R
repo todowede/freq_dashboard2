@@ -40,12 +40,12 @@ generate_event_detection_report <- function(config) {
     return(invisible(TRUE))
   }
   
-  # --- Monthly Aggregation (using category_old for compatibility) ---
+  # --- Monthly Aggregation ---
   event_data[, month := floor_date(date, "month")]
   monthly_summary <- event_data[, .(
-    red_ratio = mean(category_old == "Red"),
+    red_ratio = mean(category == "Red"),
     n_total = .N,
-    n_red = sum(category_old == "Red")
+    n_red = sum(category == "Red")
   ), by = .(year = year(month), month = floor_date(date, "month"))]
   
   # Add month_lab column to match old code exactly
