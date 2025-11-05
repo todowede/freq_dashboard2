@@ -56,7 +56,8 @@ ui <- dashboardPage(
       menuItem("Imbalance Analysis", tabName = "imbalance", icon = icon("balance-scale")),
       menuItem("Demand Analysis", tabName = "demand", icon = icon("plug")),
       menuItem("Unforeseen Demand", tabName = "unforeseen", icon = icon("exclamation-triangle")),
-      menuItem("Unforeseen Patterns", tabName = "unforeseen_patterns", icon = icon("chart-line"))
+      menuItem("Unforeseen Patterns", tabName = "unforeseen_patterns", icon = icon("chart-line")),
+      menuItem("Monthly Trends", tabName = "monthly_trends", icon = icon("calendar-alt"))
     )
   ),
   
@@ -1096,6 +1097,142 @@ ui <- dashboardPage(
                     )
                   ),
                   plotlyOutput("patternsTimeSeriesPlot", height = "400px")
+                )
+              )
+      ),
+
+      # -- Monthly Trends Tab --
+      tabItem(tabName = "monthly_trends",
+              fluidRow(
+                box(
+                  title = "Monthly Trends Analysis - Strategic Overview",
+                  status = "warning", solidHeader = TRUE, width = 12,
+                  collapsible = TRUE, collapsed = TRUE,
+                  tags$div(
+                    style = "padding: 10px;",
+                    tags$p(strong("Purpose:")),
+                    tags$p("Compare performance across months to identify trends, seasonal patterns, and areas requiring strategic intervention."),
+                    tags$p(strong("Key Insights:")),
+                    tags$ul(
+                      tags$li("How is event frequency and severity changing month-over-month?"),
+                      tags$li("Are system response capabilities adequate across all months?"),
+                      tags$li("What are the demand patterns and forecasting accuracy trends?"),
+                      tags$li("Which months require focused improvement efforts?")
+                    )
+                  )
+                )
+              ),
+
+              # Date Range Filter
+              fluidRow(
+                box(
+                  title = "Analysis Period", status = "primary", solidHeader = TRUE, width = 12,
+                  fluidRow(
+                    column(3,
+                           dateInput("monthlyStartDate", "Start Month:",
+                                     value = as.Date("2025-05-01"),
+                                     min = as.Date("2025-01-01"),
+                                     max = as.Date("2025-12-31"),
+                                     startview = "month", format = "yyyy-mm")
+                    ),
+                    column(3,
+                           dateInput("monthlyEndDate", "End Month:",
+                                     value = as.Date("2025-08-31"),
+                                     min = as.Date("2025-01-01"),
+                                     max = as.Date("2025-12-31"),
+                                     startview = "month", format = "yyyy-mm")
+                    ),
+                    column(3,
+                           selectInput("monthlyMetric", "Demand Metric:",
+                                       choices = c("ND", "TSD", "ENGLAND_WALES_DEMAND"),
+                                       selected = "ND")
+                    ),
+                    column(3,
+                           br(),
+                           actionButton("updateMonthlyPlots", "Update Analysis",
+                                        class = "btn-primary",
+                                        style = "width: 100%;")
+                    )
+                  )
+                )
+              ),
+
+              # Panel 1: Monthly Quality Metrics Time Series
+              fluidRow(
+                box(
+                  title = "Panel 1: Monthly Event Distribution by Severity",
+                  status = "danger", solidHeader = TRUE, width = 12,
+                  plotlyOutput("monthlyQualityMetrics", height = "450px"),
+                  tags$div(
+                    style = "padding: 10px; margin-top: 10px; background-color: #f9f9f9; border-radius: 5px;",
+                    tags$p(strong("Interpretation:"), "Track how Red, Amber, and Blue event counts evolve month-over-month. Increasing Red events indicate deteriorating system performance.")
+                  )
+                )
+              ),
+
+              # Panel 2: Monthly Frequency Excursions by Magnitude
+              fluidRow(
+                box(
+                  title = "Panel 2: Monthly Frequency Excursion Severity Distribution",
+                  status = "danger", solidHeader = TRUE, width = 12,
+                  plotlyOutput("monthlyExcursions", height = "450px"),
+                  tags$div(
+                    style = "padding: 10px; margin-top: 10px; background-color: #f9f9f9; border-radius: 5px;",
+                    tags$p(strong("Interpretation:"), "Compare frequency excursion magnitudes (0.1 Hz, 0.15 Hz, >0.2 Hz) across months. Higher magnitude excursions indicate larger power imbalances.")
+                  )
+                )
+              ),
+
+              # Panel 3: Monthly Red Ratio Trend
+              fluidRow(
+                box(
+                  title = "Panel 3: Monthly Red Event Ratio Trend",
+                  status = "warning", solidHeader = TRUE, width = 12,
+                  plotlyOutput("monthlyRedRatio", height = "400px"),
+                  tags$div(
+                    style = "padding: 10px; margin-top: 10px; background-color: #f9f9f9; border-radius: 5px;",
+                    tags$p(strong("Target:"), "Red Event Ratio < 20%"),
+                    tags$p(strong("Interpretation:"), "Track the percentage of severe events. Upward trend requires immediate strategic intervention.")
+                  )
+                )
+              ),
+
+              # Panel 4: Monthly System Response Time Series
+              fluidRow(
+                box(
+                  title = "Panel 4: Monthly Average System Response Capacity",
+                  status = "success", solidHeader = TRUE, width = 12,
+                  plotlyOutput("monthlyResponse", height = "450px"),
+                  tags$div(
+                    style = "padding: 10px; margin-top: 10px; background-color: #f9f9f9; border-radius: 5px;",
+                    tags$p(strong("Interpretation:"), "Monitor response holdings (Primary, Secondary, Fast Response) over time. Ensure capacity keeps pace with system needs.")
+                  )
+                )
+              ),
+
+              # Panel 5: Monthly Demand Analysis
+              fluidRow(
+                box(
+                  title = "Panel 5: Monthly Demand Statistics",
+                  status = "primary", solidHeader = TRUE, width = 12,
+                  plotlyOutput("monthlyDemand", height = "450px"),
+                  tags$div(
+                    style = "padding: 10px; margin-top: 10px; background-color: #f9f9f9; border-radius: 5px;",
+                    tags$p(strong("Interpretation:"), "Compare average, minimum, and maximum demand across months. Identifies seasonal patterns and peak demand periods.")
+                  )
+                )
+              ),
+
+              # Panel 6: Monthly Demand Changes with Damping Separation
+              fluidRow(
+                box(
+                  title = "Panel 6: Monthly Demand Changes vs Damping Effects",
+                  status = "info", solidHeader = TRUE, width = 12,
+                  plotlyOutput("monthlyDampingAnalysis", height = "450px"),
+                  tags$div(
+                    style = "padding: 10px; margin-top: 10px; background-color: #f9f9f9; border-radius: 5px;",
+                    tags$p(strong("Interpretation:"), "Separate market-driven demand changes from frequency-induced damping effects. Shows forecasting accuracy trends.")
+                  )
                 )
               )
       )
@@ -3159,6 +3296,14 @@ server <- function(input, output, session) {
     fread("data/output/reports/demand_hourly_summary.csv")
   })
 
+  # Reactive expression to load system dynamics data
+  systemData <- reactive({
+    req(file.exists("data/output/reports/system_dynamics_review.csv"))
+    dt <- fread("data/output/reports/system_dynamics_review.csv")
+    dt[, Date := as.Date(Date)]
+    return(dt)
+  })
+
   demandDailyPeaksData <- reactive({
     req(file.exists("data/output/reports/demand_daily_peaks.csv"))
     dt <- fread("data/output/reports/demand_daily_peaks.csv")
@@ -4152,6 +4297,377 @@ server <- function(input, output, session) {
         xaxis = list(title = "Date"),
         yaxis = list(title = "Average Daily Percentage (%)"),
         legend = list(orientation = "h", x = 0.2, y = -0.15)
+      )
+  })
+
+  # ========================================================================
+  # MONTHLY TRENDS TAB - Server Logic
+  # ========================================================================
+
+  # Reactive data filtering for monthly trends
+  monthlyFilteredData <- eventReactive(input$updateMonthlyPlots, {
+    list(
+      events = eventData(),
+      demand = demandData(),
+      unforeseen = unforeseenData(),
+      system = systemData(),
+      start_date = input$monthlyStartDate,
+      end_date = input$monthlyEndDate,
+      metric = input$monthlyMetric
+    )
+  }, ignoreNULL = FALSE)
+
+  # Panel 1: Monthly Quality Metrics Time Series
+  output$monthlyQualityMetrics <- renderPlotly({
+    data <- monthlyFilteredData()
+    df <- data$events
+
+    if (is.null(df) || nrow(df) == 0) {
+      p <- ggplot() +
+        annotate("text", x = 0.5, y = 0.5,
+                 label = "No event data available", size = 6) +
+        theme_void()
+      return(ggplotly(p))
+    }
+
+    # Convert boundary_time to date
+    df[, date := as.Date(boundary_time)]
+    df[, month := format(date, "%Y-%m")]
+
+    # Filter by date range
+    df_filtered <- df[date >= data$start_date & date <= data$end_date]
+
+    # Aggregate by month and category
+    monthly_counts <- df_filtered[, .N, by = .(month, category)]
+
+    # Create plot
+    p <- ggplot(monthly_counts, aes(x = month, y = N, fill = category, group = category)) +
+      geom_bar(stat = "identity", position = "dodge") +
+      scale_fill_manual(
+        name = "Event Severity",
+        values = c("Red" = "#d62728", "Amber" = "#ff7f0e", "Blue" = "#1f77b4")
+      ) +
+      labs(
+        title = "Monthly Event Count by Severity Category",
+        x = "Month",
+        y = "Number of Events"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        legend.position = "right",
+        axis.text.x = element_text(angle = 45, hjust = 1)
+      )
+
+    ggplotly(p, tooltip = c("x", "y", "fill")) %>%
+      layout(
+        xaxis = list(title = "Month"),
+        yaxis = list(title = "Event Count"),
+        legend = list(orientation = "v", x = 1.02, y = 0.5)
+      )
+  })
+
+  # Panel 2: Monthly Frequency Excursions
+  output$monthlyExcursions <- renderPlotly({
+    data <- monthlyFilteredData()
+    df <- data$events
+
+    if (is.null(df) || nrow(df) == 0) {
+      p <- ggplot() +
+        annotate("text", x = 0.5, y = 0.5,
+                 label = "No event data available", size = 6) +
+        theme_void()
+      return(ggplotly(p))
+    }
+
+    # Convert and filter
+    df[, date := as.Date(boundary_time)]
+    df[, month := format(date, "%Y-%m")]
+    df_filtered <- df[date >= data$start_date & date <= data$end_date]
+
+    # Classify excursion magnitude
+    df_filtered[, excursion_class := fcase(
+      abs_freq_change >= 0.20, ">0.2 Hz",
+      abs_freq_change >= 0.15, "0.15-0.20 Hz",
+      abs_freq_change >= 0.10, "0.10-0.15 Hz",
+      default = "<0.10 Hz"
+    )]
+
+    # Count by month and class
+    monthly_excursions <- df_filtered[, .N, by = .(month, excursion_class)]
+
+    # Ensure all classes present with factor levels
+    monthly_excursions[, excursion_class := factor(
+      excursion_class,
+      levels = c("<0.10 Hz", "0.10-0.15 Hz", "0.15-0.20 Hz", ">0.2 Hz")
+    )]
+
+    # Create stacked bar plot
+    p <- ggplot(monthly_excursions, aes(x = month, y = N, fill = excursion_class)) +
+      geom_bar(stat = "identity") +
+      scale_fill_manual(
+        name = "Excursion Magnitude",
+        values = c(
+          "<0.10 Hz" = "#2ca02c",
+          "0.10-0.15 Hz" = "#1f77b4",
+          "0.15-0.20 Hz" = "#ff7f0e",
+          ">0.2 Hz" = "#d62728"
+        )
+      ) +
+      labs(
+        title = "Monthly Frequency Excursion Distribution by Magnitude",
+        x = "Month",
+        y = "Count of Excursions"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        legend.position = "right",
+        axis.text.x = element_text(angle = 45, hjust = 1)
+      )
+
+    ggplotly(p) %>%
+      layout(
+        xaxis = list(title = "Month"),
+        yaxis = list(title = "Event Count"),
+        legend = list(orientation = "v", x = 1.02, y = 0.5)
+      )
+  })
+
+  # Panel 3: Monthly Red Ratio
+  output$monthlyRedRatio <- renderPlotly({
+    data <- monthlyFilteredData()
+    df <- data$events
+
+    if (is.null(df) || nrow(df) == 0) {
+      p <- ggplot() +
+        annotate("text", x = 0.5, y = 0.5,
+                 label = "No event data available", size = 6) +
+        theme_void()
+      return(ggplotly(p))
+    }
+
+    # Convert and filter
+    df[, date := as.Date(boundary_time)]
+    df[, month := format(date, "%Y-%m")]
+    df_filtered <- df[date >= data$start_date & date <= data$end_date]
+
+    # Calculate Red ratio by month
+    monthly_ratio <- df_filtered[, .(
+      total_events = .N,
+      red_events = sum(category == "Red"),
+      red_ratio = sum(category == "Red") / .N * 100
+    ), by = month]
+
+    # Create line plot with threshold
+    p <- ggplot(monthly_ratio, aes(x = month, y = red_ratio, group = 1)) +
+      geom_line(color = "#d62728", linewidth = 1.2) +
+      geom_point(size = 3, color = "#d62728") +
+      geom_hline(yintercept = 20, linetype = "dashed", color = "black", linewidth = 0.8) +
+      annotate("text", x = 1, y = 22, label = "Target: <20%", hjust = 0, size = 4) +
+      labs(
+        title = "Monthly Red Event Ratio Trend",
+        x = "Month",
+        y = "Red Event Ratio (%)"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+    ggplotly(p, tooltip = c("x", "y")) %>%
+      layout(
+        xaxis = list(title = "Month"),
+        yaxis = list(title = "Red Event Ratio (%)")
+      )
+  })
+
+  # Panel 4: Monthly System Response Time Series
+  output$monthlyResponse <- renderPlotly({
+    data <- monthlyFilteredData()
+    df <- data$system
+
+    if (is.null(df) || nrow(df) == 0) {
+      p <- ggplot() +
+        annotate("text", x = 0.5, y = 0.5,
+                 label = "No system data available", size = 6) +
+        theme_void()
+      return(ggplotly(p))
+    }
+
+    # Convert and filter
+    df[, date := as.Date(Date)]
+    df[, month := format(date, "%Y-%m")]
+    df_filtered <- df[date >= data$start_date & date <= data$end_date]
+
+    # Calculate monthly averages
+    monthly_response <- df_filtered[, .(
+      Primary = mean(Primary, na.rm = TRUE),
+      Secondary = mean(Secondary, na.rm = TRUE),
+      Fast_Response = mean(DR + DM + DC, na.rm = TRUE),
+      Total = mean(Primary + Secondary + DR + DM + DC + High, na.rm = TRUE)
+    ), by = month]
+
+    # Reshape to long format
+    response_long <- melt(monthly_response, id.vars = "month",
+                          variable.name = "service_type", value.name = "capacity_mw")
+
+    # Create plot
+    p <- ggplot(response_long, aes(x = month, y = capacity_mw,
+                                     color = service_type, group = service_type)) +
+      geom_line(linewidth = 1) +
+      geom_point(size = 2.5) +
+      scale_color_manual(
+        name = "Response Type",
+        values = c(
+          "Primary" = "#1f77b4",
+          "Secondary" = "#ff7f0e",
+          "Fast_Response" = "#2ca02c",
+          "Total" = "#d62728"
+        )
+      ) +
+      labs(
+        title = "Monthly Average Response Capacity",
+        x = "Month",
+        y = "Capacity (MW)"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        legend.position = "right",
+        axis.text.x = element_text(angle = 45, hjust = 1)
+      )
+
+    ggplotly(p, tooltip = c("x", "y", "colour")) %>%
+      layout(
+        xaxis = list(title = "Month"),
+        yaxis = list(title = "Response Capacity (MW)"),
+        legend = list(orientation = "v", x = 1.02, y = 0.5)
+      )
+  })
+
+  # Panel 5: Monthly Demand Analysis
+  output$monthlyDemand <- renderPlotly({
+    data <- monthlyFilteredData()
+    df <- data$demand
+    metric <- data$metric
+
+    if (is.null(df) || nrow(df) == 0) {
+      p <- ggplot() +
+        annotate("text", x = 0.5, y = 0.5,
+                 label = "No demand data available", size = 6) +
+        theme_void()
+      return(ggplotly(p))
+    }
+
+    # Convert and filter
+    df[, date := as.Date(Date)]
+    df[, month := format(date, "%Y-%m")]
+    df_filtered <- df[date >= data$start_date & date <= data$end_date]
+
+    # Calculate monthly statistics for selected metric
+    monthly_demand <- df_filtered[, .(
+      Mean = mean(get(metric), na.rm = TRUE),
+      Min = min(get(metric), na.rm = TRUE),
+      Max = max(get(metric), na.rm = TRUE)
+    ), by = month]
+
+    # Reshape to long format
+    demand_long <- melt(monthly_demand, id.vars = "month",
+                        variable.name = "statistic", value.name = "demand_mw")
+
+    # Create plot
+    p <- ggplot(demand_long, aes(x = month, y = demand_mw,
+                                   color = statistic, group = statistic)) +
+      geom_line(linewidth = 1) +
+      geom_point(size = 2.5) +
+      scale_color_manual(
+        name = "Statistic",
+        values = c("Mean" = "#1f77b4", "Min" = "#2ca02c", "Max" = "#d62728")
+      ) +
+      labs(
+        title = paste0("Monthly ", metric, " Statistics"),
+        x = "Month",
+        y = paste0(metric, " (MW)")
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        legend.position = "right",
+        axis.text.x = element_text(angle = 45, hjust = 1)
+      )
+
+    ggplotly(p, tooltip = c("x", "y", "colour")) %>%
+      layout(
+        xaxis = list(title = "Month"),
+        yaxis = list(title = paste0(metric, " Demand (MW)")),
+        legend = list(orientation = "v", x = 1.02, y = 0.5)
+      )
+  })
+
+  # Panel 6: Monthly Demand Changes with Damping Separation
+  output$monthlyDampingAnalysis <- renderPlotly({
+    data <- monthlyFilteredData()
+    df <- data$unforeseen
+    metric <- data$metric
+
+    if (is.null(df) || nrow(df) == 0) {
+      p <- ggplot() +
+        annotate("text", x = 0.5, y = 0.5,
+                 label = "No unforeseen demand data available", size = 6) +
+        theme_void()
+      return(ggplotly(p))
+    }
+
+    # Convert and filter
+    df[, date := as.Date(Date)]
+    df[, month := format(date, "%Y-%m")]
+    df_filtered <- df[date >= data$start_date & date <= data$end_date]
+
+    # Calculate monthly averages
+    delta_col <- paste0("Delta_", metric)
+    unforeseen_col <- paste0("Unforeseen_", metric)
+    damping_col <- paste0("Damping_", metric)
+
+    monthly_changes <- df_filtered[, .(
+      Avg_Total_Change = mean(abs(get(delta_col)), na.rm = TRUE),
+      Avg_Unforeseen = mean(abs(get(unforeseen_col)), na.rm = TRUE),
+      Avg_Damping = mean(abs(get(damping_col)), na.rm = TRUE)
+    ), by = month]
+
+    # Reshape to long format
+    changes_long <- melt(monthly_changes, id.vars = "month",
+                         variable.name = "component", value.name = "magnitude_mw")
+
+    # Create labels
+    changes_long[, component_label := fcase(
+      component == "Avg_Total_Change", "Total Observed Change",
+      component == "Avg_Unforeseen", "Market-Driven (Unforeseen)",
+      component == "Avg_Damping", "Frequency Damping Effect"
+    )]
+
+    # Create plot
+    p <- ggplot(changes_long, aes(x = month, y = magnitude_mw,
+                                    fill = component_label)) +
+      geom_bar(stat = "identity", position = "dodge") +
+      scale_fill_manual(
+        name = "Component",
+        values = c(
+          "Total Observed Change" = "#1f77b4",
+          "Market-Driven (Unforeseen)" = "#d62728",
+          "Frequency Damping Effect" = "#2ca02c"
+        )
+      ) +
+      labs(
+        title = paste0("Monthly Average Demand Changes - ", metric),
+        x = "Month",
+        y = "Average Magnitude (MW)"
+      ) +
+      theme_minimal(base_size = 12) +
+      theme(
+        legend.position = "right",
+        axis.text.x = element_text(angle = 45, hjust = 1)
+      )
+
+    ggplotly(p) %>%
+      layout(
+        xaxis = list(title = "Month"),
+        yaxis = list(title = "Average Change (MW)"),
+        legend = list(orientation = "v", x = 1.02, y = 0.5)
       )
   })
 }
