@@ -167,11 +167,11 @@ ui <- dashboardPage(
                            conditionalPanel(
                              condition = "input.overviewFilterMode == 'date_range'",
                              dateInput("overviewStartDate", "Start Date:",
-                                       value = as.Date("2025-05-01"),
+                                       value = as.Date("2025-01-01"),
                                        min = as.Date("2025-01-01"),
                                        max = as.Date("2025-09-30")),
                              dateInput("overviewEndDate", "End Date:",
-                                       value = as.Date("2025-05-01"),
+                                       value = as.Date("2025-01-01"),
                                        min = as.Date("2025-01-01"),
                                        max = as.Date("2025-09-30"))
                            ),
@@ -615,13 +615,13 @@ ui <- dashboardPage(
                   fluidRow(
                     column(3,
                            dateInput("excursionStartDate", "Start Date:",
-                                     value = as.Date("2025-05-01"),
+                                     value = as.Date("2025-01-01"),
                                      min = as.Date("2025-01-01"),
                                      max = as.Date("2025-09-30"))
                     ),
                     column(3,
                            dateInput("excursionEndDate", "End Date:",
-                                     value = as.Date("2025-05-01"),
+                                     value = as.Date("2025-01-01"),
                                      min = as.Date("2025-01-01"),
                                      max = as.Date("2025-09-30"))
                     ),
@@ -704,13 +704,13 @@ ui <- dashboardPage(
                   fluidRow(
                     column(3,
                            dateInput("responseStartDate", "Start Date:",
-                                     value = as.Date("2025-05-01"),
+                                     value = as.Date("2025-01-01"),
                                      min = as.Date("2025-01-01"),
                                      max = as.Date("2025-09-30"))
                     ),
                     column(3,
                            dateInput("responseEndDate", "End Date:",
-                                     value = as.Date("2025-05-01"),
+                                     value = as.Date("2025-01-01"),
                                      min = as.Date("2025-01-01"),
                                      max = as.Date("2025-09-30"))
                     ),
@@ -843,13 +843,13 @@ ui <- dashboardPage(
                                    ),
                                    column(3,
                                           dateInput("unforeseenStartDate", "Start Date:",
-                                                    value = as.Date("2025-05-01"),
+                                                    value = as.Date("2025-01-01"),
                                                     min = as.Date("2025-01-01"),
                                                     max = as.Date("2025-09-30"))
                                    ),
                                    column(3,
                                           dateInput("unforeseenEndDate", "End Date:",
-                                                    value = as.Date("2025-05-01"),
+                                                    value = as.Date("2025-01-01"),
                                                     min = as.Date("2025-01-01"),
                                                     max = as.Date("2025-09-30"))
                                    )
@@ -930,13 +930,13 @@ ui <- dashboardPage(
                                  fluidRow(
                                    column(3,
                                           dateInput("patternsStartDate", "Start Date:",
-                                                    value = as.Date("2025-05-01"),
+                                                    value = as.Date("2025-01-01"),
                                                     min = as.Date("2025-01-01"),
                                                     max = as.Date("2025-09-30"))
                                    ),
                                    column(3,
                                           dateInput("patternsEndDate", "End Date:",
-                                                    value = as.Date("2025-05-01"),
+                                                    value = as.Date("2025-01-01"),
                                                     min = as.Date("2025-01-01"),
                                                     max = as.Date("2025-09-30"))
                                    ),
@@ -1010,7 +1010,7 @@ ui <- dashboardPage(
                   fluidRow(
                     column(3,
                            dateInput("monthlyStartDate", "Start Month:",
-                                     value = as.Date("2025-05-01"),
+                                     value = as.Date("2025-01-01"),
                                      min = as.Date("2025-01-01"),
                                      max = as.Date("2025-12-31"),
                                      startview = "month", format = "yyyy-mm")
@@ -1141,16 +1141,22 @@ server <- function(input, output, session) {
   
   # Dynamic date range UI for frequency plots
   output$freqDateRangeUI <- renderUI({
+    df <- frequencyData()
+    # Get actual data range
+    df[, date := as.Date(dtm_sec)]
+    min_date <- min(df$date, na.rm = TRUE)
+    max_date <- max(df$date, na.rm = TRUE)
+
     div(
       dateInput("freqStartDate", "Start Date:",
-                value = as.Date("2025-05-01"),
-                min = as.Date("2025-01-01"),
-                max = as.Date("2025-09-30")),
+                value = min_date,
+                min = min_date,
+                max = max_date),
       br(),
       dateInput("freqEndDate", "End Date:",
-                value = as.Date("2025-05-01"),
-                min = as.Date("2025-01-01"),
-                max = as.Date("2025-09-30"))
+                value = max_date,
+                min = min_date,
+                max = max_date)
     )
   })
 
