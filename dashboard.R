@@ -1156,16 +1156,21 @@ server <- function(input, output, session) {
 
   # Dynamic date range UI for KPI plots
   output$kpiDateRangeUI <- renderUI({
+    df <- kpiData()
+    # Get actual data range
+    min_date <- min(df$date, na.rm = TRUE)
+    max_date <- max(df$date, na.rm = TRUE)
+
     div(
       dateInput("kpiStartDate", "Start Date:",
-                value = as.Date("2025-05-01"),
-                min = as.Date("2025-01-01"),
-                max = as.Date("2025-09-30")),
+                value = min_date,
+                min = min_date,
+                max = max_date),
       br(),
       dateInput("kpiEndDate", "End Date:",
-                value = as.Date("2025-05-01"),
-                min = as.Date("2025-01-01"),
-                max = as.Date("2025-09-30"))
+                value = max_date,
+                min = min_date,
+                max = max_date)
     )
   })
 
