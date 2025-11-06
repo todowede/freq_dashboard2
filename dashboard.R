@@ -41,23 +41,19 @@ valueBoxSpark <- function(value, title, subtitle, icon, color) {
 # ===================================================================
 ui <- dashboardPage(
   skin = "red",
-  dashboardHeader(title = "NESO Frequency Analysis"),
-  
+  dashboardHeader(title = "Frequency KPI Dashboard"),
+
   # --- Sidebar Navigation ---
   dashboardSidebar(
     sidebarMenu(
-      menuItem("Overview", tabName = "overview", icon = icon("dashboard")),
-      menuItem("SP Boundary Events", tabName = "explorer", icon = icon("search")),
-      menuItem("Frequency & ROCOF", tabName = "frequency", icon = icon("wave-square")),
-      menuItem("Frequency KPI", tabName = "kpi", icon = icon("clipboard-check")),
-      menuItem("Frequency Excursion", tabName = "excursion", icon = icon("bolt")),
-      menuItem("Monthly Red Ratio", tabName = "plots", icon = icon("chart-line")),
-      menuItem("Response Holding", tabName = "response", icon = icon("battery-full")),
-      menuItem("Imbalance Analysis", tabName = "imbalance", icon = icon("balance-scale")),
-      menuItem("Demand Analysis", tabName = "demand", icon = icon("plug")),
-      menuItem("Unforeseen Demand", tabName = "unforeseen", icon = icon("exclamation-triangle")),
-      menuItem("Unforeseen Patterns", tabName = "unforeseen_patterns", icon = icon("chart-line")),
-      menuItem("Monthly Trends", tabName = "monthly_trends", icon = icon("calendar-alt"))
+      menuItem("Overview", tabName = "overview"),
+      menuItem("SP Boundary Events", tabName = "explorer"),
+      menuItem("Frequency & ROCOF", tabName = "frequency"),
+      menuItem("Frequency KPI", tabName = "kpi"),
+      menuItem("Frequency Excursion", tabName = "excursion"),
+      menuItem("Response Holding", tabName = "response"),
+      menuItem("Unforeseen Demand", tabName = "unforeseen"),
+      menuItem("Monthly Trends", tabName = "monthly_trends")
     )
   ),
   
@@ -73,7 +69,7 @@ ui <- dashboardPage(
                   title = "Configuration Parameters", status = "primary", solidHeader = TRUE, width = 12,
                   collapsible = TRUE, collapsed = FALSE,
                   fluidRow(
-                    column(6,
+                    column(4,
                            tags$h4(style = "margin-top: 0; color: #3c8dbc;", "Event Detection Thresholds"),
                            tags$div(
                              style = "padding: 10px; background-color: #f9f9f9; border-radius: 5px;",
@@ -98,7 +94,7 @@ ui <- dashboardPage(
                              )
                            )
                     ),
-                    column(6,
+                    column(4,
                            tags$h4(style = "margin-top: 0; color: #3c8dbc;", "Frequency KPI Thresholds"),
                            tags$div(
                              style = "padding: 10px; background-color: #f9f9f9; border-radius: 5px;",
@@ -119,6 +115,31 @@ ui <- dashboardPage(
                                tags$tr(
                                  tags$td(style = "padding: 5px; font-weight: bold; color: #2ca02c;", "GREEN:"),
                                  tags$td(style = "padding: 5px;", "All other readings (acceptable performance)")
+                               )
+                             )
+                           )
+                    ),
+                    column(4,
+                           tags$h4(style = "margin-top: 0; color: #3c8dbc;", "Data Coverage"),
+                           tags$div(
+                             style = "padding: 10px; background-color: #f9f9f9; border-radius: 5px;",
+                             tags$table(
+                               style = "width: 100%; border-collapse: collapse;",
+                               tags$tr(
+                                 tags$td(style = "padding: 5px; font-weight: bold;", "Data Source:"),
+                                 tags$td(style = "padding: 5px;", "data/input/fnew-*.csv")
+                               ),
+                               tags$tr(
+                                 tags$td(style = "padding: 5px; font-weight: bold;", "Start Date:"),
+                                 tags$td(style = "padding: 5px;", uiOutput("configDataStartDate"))
+                               ),
+                               tags$tr(
+                                 tags$td(style = "padding: 5px; font-weight: bold;", "End Date:"),
+                                 tags$td(style = "padding: 5px;", uiOutput("configDataEndDate"))
+                               ),
+                               tags$tr(
+                                 tags$td(style = "padding: 5px; font-weight: bold;", "Total Months:"),
+                                 tags$td(style = "padding: 5px;", uiOutput("configDataMonths"))
                                )
                              )
                            )
@@ -184,11 +205,11 @@ ui <- dashboardPage(
                          uiOutput("kpiSummaryUI")
                        )
                 ),
-                # Data Coverage Summary
+                # Unforeseen Demand Events Summary
                 column(4,
                        box(
-                         title = "Data Coverage", status = "success", solidHeader = TRUE, width = NULL,
-                         uiOutput("dataCoverageUI")
+                         title = "Unforeseen Demand Events Summary", status = "success", solidHeader = TRUE, width = NULL,
+                         uiOutput("unforeseenSummaryUI")
                        )
                 )
               )
@@ -323,6 +344,78 @@ ui <- dashboardPage(
                                )
                         )
                       )
+                    ),
+                    # Subtab 3: Imbalance
+                    tabPanel(
+                      title = "Imbalance",
+                      value = "imbalance",
+                      br(),
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Power Imbalance from Frequency Events", status = "info", solidHeader = TRUE, width = NULL,
+                                 collapsible = TRUE, collapsed = TRUE,
+                                 tags$div(
+                                   style = "padding: 10px;",
+                                   tags$p("This analysis reverse-engineers the power imbalance (MW) that caused each frequency deviation."),
+                                   tags$p(strong("Calculation components:")),
+                                   tags$ul(
+                                     tags$li("Low frequency response (from system dynamics data)"),
+                                     tags$li("High frequency response"),
+                                     tags$li("Demand damping (2.5% per Hz)"),
+                                     tags$li("RoCoF component (inertia × df/dt)")
+                                   ),
+                                   tags$p(strong("Formula:"), " Imbalance = -LF_response + Demand_damping + HF_response + RoCoF_component"),
+                                   tags$p(style = "font-size: 12px; color: #666;",
+                                          strong("Note:"), " Default values used: Inertia = 150 GVA·s, Demand = 35,000 MW")
+                                 )
+                               )
+                        )
+                      ),
+                      # Event Selection
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Select Event to Analyze", status = "warning", solidHeader = TRUE, width = NULL,
+                                 fluidRow(
+                                   column(4,
+                                          selectInput("imbalanceEventFilter", "Filter Events:",
+                                                      choices = c("All Red Events" = "all", "Top 10 Severity" = "top10", "Latest 10" = "latest10"),
+                                                      selected = "top10")
+                                   ),
+                                   column(4,
+                                          uiOutput("imbalanceEventSelectUI")
+                                   ),
+                                   column(4,
+                                          br(),
+                                          actionButton("updateImbalancePlot", "Load Event Data",
+                                                       class = "btn-primary",
+                                                       style = "width: 100%;")
+                                   )
+                                 )
+                               )
+                        )
+                      ),
+                      # Frequency Event Plot
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Frequency Event (±15 seconds around SP boundary)",
+                                 status = "warning", solidHeader = TRUE, width = NULL,
+                                 plotlyOutput("imbalanceFrequencyPlot", height = "400px")
+                               )
+                        )
+                      ),
+                      # Imbalance Time Series Plot
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Power Imbalance Time Series (±15 seconds around SP boundary)",
+                                 status = "primary", solidHeader = TRUE, width = NULL,
+                                 plotlyOutput("imbalanceTimeSeriesPlot", height = "400px")
+                               )
+                        )
+                      )
                     )
                   )
                 )
@@ -399,69 +492,98 @@ ui <- dashboardPage(
 
       # -- Frequency KPI Tab --
       tabItem(tabName = "kpi",
+              # Subtabs for KPI Analysis and Static Monthly Red Ratio
               fluidRow(
                 box(
-                  title = "Filter Options", status = "warning", solidHeader = TRUE, width = 12,
-                  # Add style to prevent clipping of date picker dropdown
-                  tags$style(HTML("
-                    .box-body { overflow: visible !important; }
-                    .datepicker { z-index: 9999 !important; }
-                  ")),
-                  fluidRow(
-                    column(3,
-                           radioButtons("kpiFilterMode", "Filter By:",
-                                      choices = c("Date Range" = "date_range",
-                                                "Month" = "month"),
-                                      selected = "date_range")
+                  title = NULL, status = "primary", solidHeader = FALSE, width = 12,
+                  tabsetPanel(
+                    id = "kpiTabs",
+                    # Subtab 1: KPI Analysis
+                    tabPanel(
+                      title = "KPI Analysis",
+                      value = "kpi_analysis",
+                      br(),
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Filter Options", status = "warning", solidHeader = TRUE, width = NULL,
+                                 # Add style to prevent clipping of date picker dropdown
+                                 tags$style(HTML("
+                                   .box-body { overflow: visible !important; }
+                                   .datepicker { z-index: 9999 !important; }
+                                 ")),
+                                 fluidRow(
+                                   column(3,
+                                          radioButtons("kpiFilterMode", "Filter By:",
+                                                     choices = c("Date Range" = "date_range",
+                                                               "Month" = "month"),
+                                                     selected = "date_range")
+                                   ),
+                                   column(5,
+                                          # Date Range Filter (shown when mode = date_range)
+                                          conditionalPanel(
+                                            condition = "input.kpiFilterMode == 'date_range'",
+                                            uiOutput("kpiDateRangeUI")
+                                          ),
+                                          # Month Filter (shown when mode = month)
+                                          conditionalPanel(
+                                            condition = "input.kpiFilterMode == 'month'",
+                                            div(style = "margin-top: 25px;",
+                                                selectInput("kpiMonthFilter", "Select Month:",
+                                                          choices = NULL,
+                                                          selected = NULL,
+                                                          multiple = FALSE)
+                                            )
+                                          )
+                                   ),
+                                   column(4,
+                                          div(style = "margin-top: 25px;",
+                                              actionButton("updateKPIPlots", "Update Plots",
+                                                         class = "btn-primary",
+                                                         style = "width: 100%;")
+                                          ),
+                                          br(),
+                                          helpText("Select filter mode and click 'Update Plots' to refresh visualizations.")
+                                   )
+                                 )
+                               )
+                        )
+                      ),
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Quality Distribution by Settlement Period (Stacked Bar Chart)",
+                                 status = "primary", solidHeader = TRUE, width = NULL,
+                                 plotlyOutput("kpiStackedBarPlot", height = "500px")
+                               )
+                        )
+                      ),
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Daily Quality Metrics Time Series",
+                                 status = "info", solidHeader = TRUE, width = NULL,
+                                 plotlyOutput("kpiTimeSeriesPlot", height = "500px")
+                               )
+                        )
+                      )
                     ),
-                    column(5,
-                           # Date Range Filter (shown when mode = date_range)
-                           conditionalPanel(
-                             condition = "input.kpiFilterMode == 'date_range'",
-                             uiOutput("kpiDateRangeUI")
-                           ),
-                           # Month Filter (shown when mode = month)
-                           conditionalPanel(
-                             condition = "input.kpiFilterMode == 'month'",
-                             div(style = "margin-top: 25px;",
-                                 selectInput("kpiMonthFilter", "Select Month:",
-                                           choices = NULL,
-                                           selected = NULL,
-                                           multiple = FALSE)
-                             )
-                           )
-                    ),
-                    column(4,
-                           div(style = "margin-top: 25px;",
-                               actionButton("updateKPIPlots", "Update Plots",
-                                          class = "btn-primary",
-                                          style = "width: 100%;")
-                           ),
-                           br(),
-                           helpText("Select filter mode and click 'Update Plots' to refresh visualizations.")
+                    # Subtab 2: Static Monthly Red Ratio
+                    tabPanel(
+                      title = "Static Monthly Red Ratio",
+                      value = "static_monthly_red_ratio",
+                      br(),
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Monthly Red Event Ratio Plots", status = "info", solidHeader = TRUE, width = NULL,
+                                 p("This section displays static plots showing the monthly Red event ratio trends - the percentage of SP boundaries that were classified as Red events each month."),
+                                 uiOutput("plotGalleryUI")
+                               )
+                        )
+                      )
                     )
                   )
-                )
-              ),
-              fluidRow(
-                box(
-                  title = "Quality Distribution by Settlement Period (Stacked Bar Chart)",
-                  status = "primary", solidHeader = TRUE, width = 12,
-                  plotlyOutput("kpiStackedBarPlot", height = "500px")
-                )
-              ),
-              fluidRow(
-                box(
-                  title = "Red Percentage Heatmap (Date × Settlement Period)",
-                  status = "danger", solidHeader = TRUE, width = 12,
-                  plotlyOutput("kpiHeatmapPlot", height = "600px")
-                )
-              ),
-              fluidRow(
-                box(
-                  title = "Daily Quality Metrics Time Series",
-                  status = "info", solidHeader = TRUE, width = 12,
-                  plotlyOutput("kpiTimeSeriesPlot", height = "500px")
                 )
               )
       ),
@@ -544,17 +666,6 @@ ui <- dashboardPage(
                   title = "Frequency Deviation by Settlement Period",
                   status = "success", solidHeader = TRUE, width = 12,
                   plotlyOutput("excursionSPDeviationPlot", height = "450px")
-                )
-              )
-      ),
-
-      # -- Monthly Red Ratio Tab --
-      tabItem(tabName = "plots",
-              fluidRow(
-                box(
-                  title = "Monthly Red Event Ratio Plots", status = "info", solidHeader = TRUE, width = 12,
-                  p("This section displays static plots showing the monthly Red event ratio trends - the percentage of SP boundaries that were classified as Red events each month."),
-                  uiOutput("plotGalleryUI")
                 )
               )
       ),
@@ -669,460 +780,229 @@ ui <- dashboardPage(
               )
       ),
 
-      # -- Imbalance Analysis Tab --
-      tabItem(tabName = "imbalance",
-              fluidRow(
-                box(
-                  title = "Power Imbalance from Frequency Events", status = "info", solidHeader = TRUE, width = 12,
-                  collapsible = TRUE, collapsed = TRUE,
-                  tags$div(
-                    style = "padding: 10px;",
-                    tags$p("This analysis reverse-engineers the power imbalance (MW) that caused each frequency deviation."),
-                    tags$p(strong("Calculation components:")),
-                    tags$ul(
-                      tags$li("Low frequency response (from system dynamics data)"),
-                      tags$li("High frequency response"),
-                      tags$li("Demand damping (2.5% per Hz)"),
-                      tags$li("RoCoF component (inertia × df/dt)")
-                    ),
-                    tags$p(strong("Formula:"), " Imbalance = -LF_response + Demand_damping + HF_response + RoCoF_component"),
-                    tags$p(style = "font-size: 12px; color: #666;",
-                           strong("Note:"), " Default values used: Inertia = 150 GVA·s, Demand = 35,000 MW")
-                  )
-                )
-              ),
-
-              # Event Selection
-              fluidRow(
-                box(
-                  title = "Select Event to Analyze", status = "warning", solidHeader = TRUE, width = 12,
-                  fluidRow(
-                    column(4,
-                           selectInput("imbalanceEventFilter", "Filter Events:",
-                                       choices = c("All Red Events" = "all", "Top 10 Severity" = "top10", "Latest 10" = "latest10"),
-                                       selected = "top10")
-                    ),
-                    column(4,
-                           uiOutput("imbalanceEventSelectUI")
-                    ),
-                    column(4,
-                           br(),
-                           actionButton("updateImbalancePlot", "Load Event Data",
-                                        class = "btn-primary",
-                                        style = "width: 100%;")
-                    )
-                  )
-                )
-              ),
-
-              # Event Summary
-              fluidRow(
-                column(6,
-                       box(
-                         title = "Event Details", status = "danger", solidHeader = TRUE, width = NULL,
-                         uiOutput("imbalanceEventDetailsUI")
-                       )
-                ),
-                column(6,
-                       box(
-                         title = "Imbalance Summary", status = "primary", solidHeader = TRUE, width = NULL,
-                         uiOutput("imbalanceSummaryUI")
-                       )
-                )
-              ),
-
-              # Frequency Event Plot
-              fluidRow(
-                box(
-                  title = "Frequency Event (±15 seconds around SP boundary)",
-                  status = "warning", solidHeader = TRUE, width = 12,
-                  plotlyOutput("imbalanceFrequencyPlot", height = "400px")
-                )
-              ),
-
-              # Imbalance Time Series Plot
-              fluidRow(
-                box(
-                  title = "Power Imbalance Time Series (±15 seconds around SP boundary)",
-                  status = "primary", solidHeader = TRUE, width = 12,
-                  plotlyOutput("imbalanceTimeSeriesPlot", height = "400px")
-                )
-              ),
-
-              # Summary Table
-              fluidRow(
-                box(
-                  title = "All Events Imbalance Summary", status = "info", solidHeader = TRUE, width = 12,
-                  DT::dataTableOutput("imbalanceSummaryTable")
-                )
-              )
-      ),
-
-      # -- Demand Analysis Tab --
-      tabItem(tabName = "demand",
-              fluidRow(
-                box(
-                  title = "Demand Analysis at Settlement Period Boundaries", status = "info", solidHeader = TRUE, width = 12,
-                  collapsible = TRUE, collapsed = TRUE,
-                  tags$div(
-                    style = "padding: 10px;",
-                    tags$p("This analysis examines demand patterns at each 30-minute Settlement Period (SP) boundary."),
-                    tags$p(strong("Metrics tracked:")),
-                    tags$ul(
-                      tags$li(strong("ND:"), " National Demand"),
-                      tags$li(strong("TSD:"), " Transmission System Demand"),
-                      tags$li(strong("ENGLAND_WALES_DEMAND:"), " England & Wales Demand")
-                    ),
-                    tags$p(strong("Analysis includes:")),
-                    tags$ul(
-                      tags$li("Demand changes (ΔMW) across SP boundaries"),
-                      tags$li("Correlation with frequency events"),
-                      tags$li("Daily peak demand identification"),
-                      tags$li("Hourly demand patterns")
-                    )
-                  )
-                )
-              ),
-
-              # Filter Options
-              fluidRow(
-                box(
-                  title = "Filter Options", status = "warning", solidHeader = TRUE, width = 12,
-                  # Add style to prevent clipping of date picker dropdown
-                  tags$style(HTML("
-                    .box-body { overflow: visible !important; }
-                    .datepicker { z-index: 9999 !important; }
-                  ")),
-                  fluidRow(
-                    column(3,
-                           radioButtons("demandFilterMode", "Filter By:",
-                                        choices = c("Date Range" = "date_range", "Month" = "month"),
-                                        selected = "date_range")
-                    ),
-                    column(4,
-                           conditionalPanel(
-                             condition = "input.demandFilterMode == 'date_range'",
-                             dateInput("demandStartDate", "Start Date:",
-                                       value = as.Date("2025-05-01"),
-                                       min = as.Date("2025-01-01"),
-                                       max = as.Date("2025-09-30")),
-                             dateInput("demandEndDate", "End Date:",
-                                       value = as.Date("2025-05-01"),
-                                       min = as.Date("2025-01-01"),
-                                       max = as.Date("2025-09-30"))
-                           ),
-                           conditionalPanel(
-                             condition = "input.demandFilterMode == 'month'",
-                             selectInput("demandMonthFilter", "Select Month:", choices = NULL, multiple = FALSE)
-                           )
-                    ),
-                    column(2,
-                           br(),
-                           actionButton("updateDemandPlots", "Update Plots",
-                                        class = "btn-primary",
-                                        style = "width: 100%; margin-top: 5px;")
-                    )
-                  )
-                )
-              ),
-
-              # Summary Statistics
-              fluidRow(
-                column(4,
-                       box(
-                         title = "Demand Statistics", status = "primary", solidHeader = TRUE, width = NULL,
-                         uiOutput("demandStatsUI")
-                       )
-                ),
-                column(4,
-                       box(
-                         title = "Peak Demand", status = "danger", solidHeader = TRUE, width = NULL,
-                         uiOutput("demandPeakUI")
-                       )
-                ),
-                column(4,
-                       box(
-                         title = "Event Correlation", status = "warning", solidHeader = TRUE, width = NULL,
-                         uiOutput("demandEventCorrelationUI")
-                       )
-                )
-              ),
-
-              # Plots
-              fluidRow(
-                box(
-                  title = "Demand Time Series",
-                  status = "primary", solidHeader = TRUE, width = 12,
-                  plotlyOutput("demandTimeSeriesPlot", height = "500px")
-                )
-              ),
-
-              fluidRow(
-                box(
-                  title = "Demand Changes at SP Boundaries",
-                  status = "info", solidHeader = TRUE, width = 12,
-                  plotlyOutput("demandChangesPlot", height = "400px")
-                )
-              ),
-
-              fluidRow(
-                box(
-                  title = "Hourly Demand Pattern",
-                  status = "success", solidHeader = TRUE, width = 12,
-                  plotlyOutput("demandHourlyPlot", height = "400px")
-                )
-              ),
-
-              # Data Tables
-              fluidRow(
-                box(
-                  title = "Demand Data at SP Boundaries", status = "info", solidHeader = TRUE, width = 12,
-                  DT::dataTableOutput("demandDataTable")
-                )
-              )
-      ),
-
       # -- Unforeseen Demand Events Tab --
       tabItem(tabName = "unforeseen",
+              # Subtabs for Event Analysis and Patterns
               fluidRow(
                 box(
-                  title = "Unforeseen Demand Change Analysis with Demand Damping Separation",
-                  status = "info", solidHeader = TRUE, width = 12,
-                  collapsible = TRUE, collapsed = TRUE,
-                  tags$div(
-                    style = "padding: 10px;",
-                    tags$p(strong("Business Context:")),
-                    tags$p("Price signals cause coordinated demand changes at SP boundaries that NESO cannot anticipate. This analysis separates:"),
-                    tags$ul(
-                      tags$li(strong("Market-driven changes"), " (unforeseen - require extra reserve)"),
-                      tags$li(strong("Natural damping response"), " (helpful - automatic stabilization)")
+                  title = NULL, status = "primary", solidHeader = FALSE, width = 12,
+                  tabsetPanel(
+                    id = "unforeseenTabs",
+                    # Subtab 1: Event Analysis
+                    tabPanel(
+                      title = "Event Analysis",
+                      value = "event_analysis",
+                      br(),
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Unforeseen Demand Change Analysis with Demand Damping Separation",
+                                 status = "info", solidHeader = TRUE, width = NULL,
+                                 collapsible = TRUE, collapsed = TRUE,
+                                 tags$div(
+                                   style = "padding: 10px;",
+                                   tags$p(strong("Business Context:")),
+                                   tags$p("Price signals cause coordinated demand changes at SP boundaries that NESO cannot anticipate. This analysis separates:"),
+                                   tags$ul(
+                                     tags$li(strong("Market-driven changes"), " (unforeseen - require extra reserve)"),
+                                     tags$li(strong("Natural damping response"), " (helpful - automatic stabilization)")
+                                   ),
+                                   tags$p(strong("Demand Damping:")),
+                                   tags$p("When frequency deviates, demand naturally responds (e.g., motors slow down when frequency drops). Formula: ΔMW_damping = Demand × 2.5% × |Δf| (NESO standard)"),
+                                   tags$p(strong("Unforeseen Component:")),
+                                   tags$p("ΔMW_unforeseen = ΔMW_total - ΔMW_damping"),
+                                   tags$p("Events are flagged as 'unforeseen' if they exceed 2.5 standard deviations from the hourly baseline.")
+                                 )
+                               )
+                        )
+                      ),
+                      # Filter Options
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Filter Options", status = "warning", solidHeader = TRUE, width = NULL,
+                                 # Add style to prevent clipping of date picker dropdown
+                                 tags$style(HTML("
+                                   .box-body { overflow: visible !important; }
+                                   .datepicker { z-index: 9999 !important; }
+                                 ")),
+                                 fluidRow(
+                                   column(3,
+                                          selectInput("unforeseenMetric", "Demand Metric:",
+                                                      choices = c("ND" = "ND",
+                                                                  "TSD" = "TSD",
+                                                                  "England & Wales" = "ENGLAND_WALES_DEMAND"),
+                                                      selected = "ND")
+                                   ),
+                                   column(3,
+                                          selectInput("unforeseenFilter", "Event Filter:",
+                                                      choices = c("All Events" = "all",
+                                                                  "Unforeseen Only" = "unforeseen",
+                                                                  "Normal Only" = "normal"),
+                                                      selected = "unforeseen")
+                                   ),
+                                   column(3,
+                                          dateInput("unforeseenStartDate", "Start Date:",
+                                                    value = as.Date("2025-05-01"),
+                                                    min = as.Date("2025-01-01"),
+                                                    max = as.Date("2025-09-30"))
+                                   ),
+                                   column(3,
+                                          dateInput("unforeseenEndDate", "End Date:",
+                                                    value = as.Date("2025-05-01"),
+                                                    min = as.Date("2025-01-01"),
+                                                    max = as.Date("2025-09-30"))
+                                   )
+                                 )
+                               )
+                        )
+                      ),
+                      # Time Series Plot
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Demand Changes Over Time (with Damping Separation)",
+                                 status = "primary", solidHeader = TRUE, width = NULL,
+                                 plotlyOutput("unforeseenTimeSeriesPlot", height = "500px")
+                               )
+                        )
+                      ),
+                      # SP Frequency Event Categories
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "SP Frequency Event Categories",
+                                 status = "warning", solidHeader = TRUE, width = NULL,
+                                 plotlyOutput("unforeseenVsFreqCategoryPlot", height = "400px")
+                               )
+                        )
+                      ),
+                      # Frequency Profile Plot
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Frequency Profile for Selected Day",
+                                 status = "info", solidHeader = TRUE, width = NULL,
+                                 plotlyOutput("unforeseenFrequencyProfilePlot", height = "400px")
+                               )
+                        )
+                      ),
+                      # Data Table
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Unforeseen Demand Events Details", status = "info", solidHeader = TRUE, width = NULL,
+                                 DT::dataTableOutput("unforeseenDataTable")
+                               )
+                        )
+                      )
                     ),
-                    tags$p(strong("Demand Damping:")),
-                    tags$p("When frequency deviates, demand naturally responds (e.g., motors slow down when frequency drops). Formula: ΔMW_damping = Demand × 2.5% × |Δf| (NESO standard)"),
-                    tags$p(strong("Unforeseen Component:")),
-                    tags$p("ΔMW_unforeseen = ΔMW_total - ΔMW_damping"),
-                    tags$p("Events are flagged as 'unforeseen' if they exceed 2.5 standard deviations from the hourly baseline.")
-                  )
-                )
-              ),
-
-              # Filter Options
-              fluidRow(
-                box(
-                  title = "Filter Options", status = "warning", solidHeader = TRUE, width = 12,
-                  # Add style to prevent clipping of date picker dropdown
-                  tags$style(HTML("
-                    .box-body { overflow: visible !important; }
-                    .datepicker { z-index: 9999 !important; }
-                  ")),
-                  fluidRow(
-                    column(3,
-                           selectInput("unforeseenMetric", "Demand Metric:",
-                                       choices = c("ND" = "ND",
-                                                   "TSD" = "TSD",
-                                                   "England & Wales" = "ENGLAND_WALES_DEMAND"),
-                                       selected = "ND")
-                    ),
-                    column(3,
-                           selectInput("unforeseenFilter", "Event Filter:",
-                                       choices = c("All Events" = "all",
-                                                   "Unforeseen Only" = "unforeseen",
-                                                   "Normal Only" = "normal"),
-                                       selected = "unforeseen")
-                    ),
-                    column(3,
-                           dateInput("unforeseenStartDate", "Start Date:",
-                                     value = as.Date("2025-05-01"),
-                                     min = as.Date("2025-01-01"),
-                                     max = as.Date("2025-09-30"))
-                    ),
-                    column(3,
-                           dateInput("unforeseenEndDate", "End Date:",
-                                     value = as.Date("2025-05-01"),
-                                     min = as.Date("2025-01-01"),
-                                     max = as.Date("2025-09-30"))
+                    # Subtab 2: Patterns
+                    tabPanel(
+                      title = "Patterns",
+                      value = "patterns",
+                      br(),
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Unforeseen Demand Patterns Analysis",
+                                 status = "info", solidHeader = TRUE, width = NULL,
+                                 collapsible = TRUE, collapsed = TRUE,
+                                 tags$div(
+                                   style = "padding: 10px;",
+                                   tags$p(strong("Purpose:")),
+                                   tags$p("Identify temporal patterns in unforeseen demand events to understand which hours, days, and periods are most problematic."),
+                                   tags$p(strong("Key Insights:")),
+                                   tags$ul(
+                                     tags$li("Which hours consistently have more unforeseen events?"),
+                                     tags$li("How do events distribute across days/weeks/months?"),
+                                     tags$li("Are there trending patterns over time?")
+                                   )
+                                 )
+                               )
+                        )
+                      ),
+                      # Date Range Filter
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Filter by Date Range", status = "warning", solidHeader = TRUE, width = NULL,
+                                 fluidRow(
+                                   column(3,
+                                          dateInput("patternsStartDate", "Start Date:",
+                                                    value = as.Date("2025-05-01"),
+                                                    min = as.Date("2025-01-01"),
+                                                    max = as.Date("2025-09-30"))
+                                   ),
+                                   column(3,
+                                          dateInput("patternsEndDate", "End Date:",
+                                                    value = as.Date("2025-05-01"),
+                                                    min = as.Date("2025-01-01"),
+                                                    max = as.Date("2025-09-30"))
+                                   ),
+                                   column(3,
+                                          selectInput("patternsMetric", "Demand Metric:",
+                                                      choices = c("ND", "TSD", "ENGLAND_WALES_DEMAND"),
+                                                      selected = "ND")
+                                   ),
+                                   column(3,
+                                          br(),
+                                          actionButton("updatePatternsPlots", "Update Plots",
+                                                       class = "btn-primary",
+                                                       style = "width: 100%;")
+                                   )
+                                 )
+                               )
+                        )
+                      ),
+                      # Panel 1: Aggregated Bar Chart - Events per Hour
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Total Unforeseen Events by Hour of Day",
+                                 status = "primary", solidHeader = TRUE, width = NULL,
+                                 plotlyOutput("patternsHourlyBarPlot", height = "400px")
+                               )
+                        )
+                      ),
+                      # Panel 2: Heatmap - Events by Hour and Date
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Unforeseen Events Heatmap (Hour × Date)",
+                                 status = "info", solidHeader = TRUE, width = NULL,
+                                 plotlyOutput("patternsHeatmapPlot", height = "500px")
+                               )
+                        )
+                      ),
+                      # Panel 3: Time Series with Hour Filter
+                      fluidRow(
+                        column(12,
+                               box(
+                                 title = "Daily Event Count Time Series",
+                                 status = "success", solidHeader = TRUE, width = NULL,
+                                 fluidRow(
+                                   column(3,
+                                          selectInput("patternsHourFilter", "Filter by Hour:",
+                                                      choices = c("All Hours" = "all", as.character(0:23)),
+                                                      selected = "all")
+                                   ),
+                                   column(9,
+                                          helpText("Select a specific hour to see trends for that hour only, or 'All Hours' to see total daily counts.")
+                                   )
+                                 ),
+                                 plotlyOutput("patternsTimeSeriesPlot", height = "400px")
+                               )
+                        )
+                      )
                     )
                   )
-                )
-              ),
-
-              # Summary Statistics
-              fluidRow(
-                column(3,
-                       box(
-                         title = "Event Statistics", status = "primary", solidHeader = TRUE, width = NULL,
-                         uiOutput("unforeseenStatsUI")
-                       )
-                ),
-                column(3,
-                       box(
-                         title = "Deviation Magnitude", status = "danger", solidHeader = TRUE, width = NULL,
-                         uiOutput("unforeseenMagnitudeUI")
-                       )
-                ),
-                column(3,
-                       box(
-                         title = "Damping Component", status = "success", solidHeader = TRUE, width = NULL,
-                         uiOutput("unforeseenDampingUI")
-                       )
-                ),
-                column(3,
-                       box(
-                         title = "Causality", status = "warning", solidHeader = TRUE, width = NULL,
-                         uiOutput("unforeseenCausalityUI")
-                       )
-                )
-              ),
-
-              # Time Series Plot
-              fluidRow(
-                box(
-                  title = "Demand Changes Over Time (with Damping Separation)",
-                  status = "primary", solidHeader = TRUE, width = 12,
-                  plotlyOutput("unforeseenTimeSeriesPlot", height = "500px")
-                )
-              ),
-
-              # SP Frequency Event Categories
-              fluidRow(
-                box(
-                  title = "SP Frequency Event Categories",
-                  status = "warning", solidHeader = TRUE, width = 12,
-                  plotlyOutput("unforeseenVsFreqCategoryPlot", height = "400px")
-                )
-              ),
-
-              # Frequency Profile Plot
-              fluidRow(
-                box(
-                  title = "Frequency Profile for Selected Day",
-                  status = "info", solidHeader = TRUE, width = 12,
-                  plotlyOutput("unforeseenFrequencyProfilePlot", height = "400px")
-                )
-              ),
-
-              # Data Table
-              fluidRow(
-                box(
-                  title = "Unforeseen Demand Events Details", status = "info", solidHeader = TRUE, width = 12,
-                  DT::dataTableOutput("unforeseenDataTable")
-                )
-              )
-      ),
-
-      # -- Unforeseen Patterns Tab --
-      tabItem(tabName = "unforeseen_patterns",
-              fluidRow(
-                box(
-                  title = "Unforeseen Demand Patterns Analysis",
-                  status = "info", solidHeader = TRUE, width = 12,
-                  collapsible = TRUE, collapsed = TRUE,
-                  tags$div(
-                    style = "padding: 10px;",
-                    tags$p(strong("Purpose:")),
-                    tags$p("Identify temporal patterns in unforeseen demand events to understand which hours, days, and periods are most problematic."),
-                    tags$p(strong("Key Insights:")),
-                    tags$ul(
-                      tags$li("Which hours consistently have more unforeseen events?"),
-                      tags$li("How do events distribute across days/weeks/months?"),
-                      tags$li("Are there trending patterns over time?")
-                    )
-                  )
-                )
-              ),
-
-              # Date Range Filter
-              fluidRow(
-                box(
-                  title = "Filter by Date Range", status = "warning", solidHeader = TRUE, width = 12,
-                  fluidRow(
-                    column(3,
-                           dateInput("patternsStartDate", "Start Date:",
-                                     value = as.Date("2025-05-01"),
-                                     min = as.Date("2025-01-01"),
-                                     max = as.Date("2025-09-30"))
-                    ),
-                    column(3,
-                           dateInput("patternsEndDate", "End Date:",
-                                     value = as.Date("2025-05-01"),
-                                     min = as.Date("2025-01-01"),
-                                     max = as.Date("2025-09-30"))
-                    ),
-                    column(3,
-                           selectInput("patternsMetric", "Demand Metric:",
-                                       choices = c("ND", "TSD", "ENGLAND_WALES_DEMAND"),
-                                       selected = "ND")
-                    ),
-                    column(3,
-                           br(),
-                           actionButton("updatePatternsPlots", "Update Plots",
-                                        class = "btn-primary",
-                                        style = "width: 100%;")
-                    )
-                  )
-                )
-              ),
-
-              # Panel 1: Aggregated Bar Chart - Events per Hour
-              fluidRow(
-                box(
-                  title = "Total Unforeseen Events by Hour of Day",
-                  status = "primary", solidHeader = TRUE, width = 12,
-                  plotlyOutput("patternsHourlyBarPlot", height = "400px")
-                )
-              ),
-
-              # Panel 2: Heatmap - Events by Hour and Date
-              fluidRow(
-                box(
-                  title = "Unforeseen Events Heatmap (Hour × Date)",
-                  status = "info", solidHeader = TRUE, width = 12,
-                  plotlyOutput("patternsHeatmapPlot", height = "500px")
-                )
-              ),
-
-              # Panel 3: Time Series with Hour Filter
-              fluidRow(
-                box(
-                  title = "Daily Event Count Time Series",
-                  status = "success", solidHeader = TRUE, width = 12,
-                  fluidRow(
-                    column(3,
-                           selectInput("patternsHourFilter", "Filter by Hour:",
-                                       choices = c("All Hours" = "all", as.character(0:23)),
-                                       selected = "all")
-                    ),
-                    column(9,
-                           helpText("Select a specific hour to see trends for that hour only, or 'All Hours' to see total daily counts.")
-                    )
-                  ),
-                  plotlyOutput("patternsTimeSeriesPlot", height = "400px")
                 )
               )
       ),
 
       # -- Monthly Trends Tab --
       tabItem(tabName = "monthly_trends",
-              fluidRow(
-                box(
-                  title = "Monthly Trends Analysis - Strategic Overview",
-                  status = "warning", solidHeader = TRUE, width = 12,
-                  collapsible = TRUE, collapsed = TRUE,
-                  tags$div(
-                    style = "padding: 10px;",
-                    tags$p(strong("Purpose:")),
-                    tags$p("Compare performance across months to identify trends, seasonal patterns, and areas requiring strategic intervention."),
-                    tags$p(strong("Key Insights:")),
-                    tags$ul(
-                      tags$li("How is event frequency and severity changing month-over-month?"),
-                      tags$li("Are system response capabilities adequate across all months?"),
-                      tags$li("What are the demand patterns and forecasting accuracy trends?"),
-                      tags$li("Which months require focused improvement efforts?")
-                    )
-                  )
-                )
-              ),
-
               # Date Range Filter
               fluidRow(
                 box(
@@ -1160,79 +1040,36 @@ ui <- dashboardPage(
               # Panel 1: Monthly Quality Metrics Time Series
               fluidRow(
                 box(
-                  title = "Panel 1: Monthly Event Distribution by Severity",
+                  title = "Panel 1: Monthly Frequency KPI",
                   status = "danger", solidHeader = TRUE, width = 12,
-                  plotlyOutput("monthlyQualityMetrics", height = "450px"),
-                  tags$div(
-                    style = "padding: 10px; margin-top: 10px; background-color: #f9f9f9; border-radius: 5px;",
-                    tags$p(strong("Interpretation:"), "Track how Red, Amber, and Blue event counts evolve month-over-month. Increasing Red events indicate deteriorating system performance.")
-                  )
+                  plotlyOutput("monthlyQualityMetrics", height = "450px")
                 )
               ),
 
-              # Panel 2: Monthly Frequency Excursions by Magnitude
+              # Panel 2: Monthly Red Ratio Trend
               fluidRow(
                 box(
-                  title = "Panel 2: Monthly Frequency Excursion Severity Distribution",
-                  status = "danger", solidHeader = TRUE, width = 12,
-                  plotlyOutput("monthlyExcursions", height = "450px"),
-                  tags$div(
-                    style = "padding: 10px; margin-top: 10px; background-color: #f9f9f9; border-radius: 5px;",
-                    tags$p(strong("Interpretation:"), "Compare frequency excursion magnitudes (0.1 Hz, 0.15 Hz, >0.2 Hz) across months. Higher magnitude excursions indicate larger power imbalances.")
-                  )
-                )
-              ),
-
-              # Panel 3: Monthly Red Ratio Trend
-              fluidRow(
-                box(
-                  title = "Panel 3: Monthly Red Event Ratio Trend",
+                  title = "Panel 2: Monthly Red Event Ratio Trend",
                   status = "warning", solidHeader = TRUE, width = 12,
-                  plotlyOutput("monthlyRedRatio", height = "400px"),
-                  tags$div(
-                    style = "padding: 10px; margin-top: 10px; background-color: #f9f9f9; border-radius: 5px;",
-                    tags$p(strong("Target:"), "Red Event Ratio < 20%"),
-                    tags$p(strong("Interpretation:"), "Track the percentage of severe events. Upward trend requires immediate strategic intervention.")
-                  )
+                  plotlyOutput("monthlyRedRatio", height = "400px")
                 )
               ),
 
-              # Panel 4: Monthly System Response Time Series
+              # Panel 3: Monthly Excursion Percentage
               fluidRow(
                 box(
-                  title = "Panel 4: Monthly Average System Response Capacity",
-                  status = "success", solidHeader = TRUE, width = 12,
-                  plotlyOutput("monthlyResponse", height = "450px"),
-                  tags$div(
-                    style = "padding: 10px; margin-top: 10px; background-color: #f9f9f9; border-radius: 5px;",
-                    tags$p(strong("Interpretation:"), "Monitor response holdings (Primary, Secondary, Fast Response) over time. Ensure capacity keeps pace with system needs.")
-                  )
-                )
-              ),
-
-              # Panel 5: Monthly Demand Analysis
-              fluidRow(
-                box(
-                  title = "Panel 5: Monthly Demand Statistics",
+                  title = "Panel 3: Monthly Excursion Percentage (0.15 Hz threshold)",
                   status = "primary", solidHeader = TRUE, width = 12,
-                  plotlyOutput("monthlyDemand", height = "450px"),
-                  tags$div(
-                    style = "padding: 10px; margin-top: 10px; background-color: #f9f9f9; border-radius: 5px;",
-                    tags$p(strong("Interpretation:"), "Compare average, minimum, and maximum demand across months. Identifies seasonal patterns and peak demand periods.")
-                  )
+                  plotlyOutput("monthlyDemand", height = "450px")
                 )
               ),
 
-              # Panel 6: Monthly Demand Changes with Damping Separation
+              # Panel 4: Monthly Demand Change Analysis
               fluidRow(
                 box(
-                  title = "Panel 6: Monthly Demand Changes vs Damping Effects",
-                  status = "info", solidHeader = TRUE, width = 12,
-                  plotlyOutput("monthlyDampingAnalysis", height = "450px"),
-                  tags$div(
-                    style = "padding: 10px; margin-top: 10px; background-color: #f9f9f9; border-radius: 5px;",
-                    tags$p(strong("Interpretation:"), "Separate market-driven demand changes from frequency-induced damping effects. Shows forecasting accuracy trends.")
-                  )
+                  title = "Panel 4: Monthly Demand Change Analysis",
+                  status = "success", solidHeader = TRUE, width = 12,
+                  plotlyOutput("monthlyUnforeseenComparison", height = "450px")
                 )
               )
       )
@@ -1376,6 +1213,60 @@ server <- function(input, output, session) {
     tags$span(paste0("Freq deviation > ", freq_dev, " Hz"))
   })
 
+  # Data Coverage - Extract date range from input file names
+  dataInputCoverage <- reactive({
+    tryCatch({
+      # List all fnew-*.csv files in data/input
+      freq_files <- list.files("data/input", pattern = "^fnew-.*\\.csv$", full.names = FALSE)
+
+      if (length(freq_files) == 0) {
+        return(list(start_date = "No data", end_date = "No data", months = 0))
+      }
+
+      # Extract year and month from filenames (pattern: fnew-YYYY-M.csv)
+      file_info <- data.frame(filename = freq_files, stringsAsFactors = FALSE)
+      file_info$year <- as.integer(sub("fnew-(\\d{4})-.*", "\\1", freq_files))
+      file_info$month <- as.integer(sub("fnew-\\d{4}-(\\d+)\\.csv", "\\1", freq_files))
+
+      # Create dates (using first day of each month)
+      file_info$date <- as.Date(paste(file_info$year, file_info$month, "01", sep = "-"))
+
+      # Find earliest and latest dates
+      first_date <- min(file_info$date)
+      last_date <- max(file_info$date)
+
+      # Format as "YYYY-MM" for cleaner display
+      start_str <- format(first_date, "%Y-%m")
+      end_str <- format(last_date, "%Y-%m")
+
+      # Calculate number of months
+      n_months <- length(freq_files)
+
+      return(list(
+        start_date = start_str,
+        end_date = end_str,
+        months = n_months
+      ))
+    }, error = function(e) {
+      return(list(start_date = "Error reading data", end_date = "Error reading data", months = 0))
+    })
+  })
+
+  output$configDataStartDate <- renderUI({
+    coverage <- dataInputCoverage()
+    tags$span(coverage$start_date)
+  })
+
+  output$configDataEndDate <- renderUI({
+    coverage <- dataInputCoverage()
+    tags$span(coverage$end_date)
+  })
+
+  output$configDataMonths <- renderUI({
+    coverage <- dataInputCoverage()
+    tags$span(paste0(coverage$months, " months"))
+  })
+
   # Populate month filter choices for Overview
   observe({
     req(kpiData())
@@ -1389,14 +1280,27 @@ server <- function(input, output, session) {
   filteredOverviewData <- eventReactive(input$updateOverview, {
     req(input$overviewFilterMode)
 
-    # Get both event and KPI data
+    # Get event, KPI, and unforeseen data
     event_df <- eventData()
     kpi_df <- kpiData()
+
+    # Get unforeseen data if available
+    unforeseen_df <- tryCatch({
+      unforeseenData()
+    }, error = function(e) {
+      data.table()
+    })
 
     if (input$overviewFilterMode == "date_range") {
       req(input$overviewStartDate, input$overviewEndDate)
       event_filtered <- event_df[as.Date(date) >= input$overviewStartDate & as.Date(date) <= input$overviewEndDate]
       kpi_filtered <- kpi_df[date >= input$overviewStartDate & date <= input$overviewEndDate]
+
+      if (nrow(unforeseen_df) > 0) {
+        unforeseen_filtered <- unforeseen_df[Date >= input$overviewStartDate & Date <= input$overviewEndDate]
+      } else {
+        unforeseen_filtered <- data.table()
+      }
     } else if (input$overviewFilterMode == "month") {
       req(input$overviewMonthFilter)
       kpi_df[, month_label := format(date, "%b %Y")]
@@ -1406,11 +1310,20 @@ server <- function(input, output, session) {
       event_df[, month_label := format(date, "%b %Y")]
       event_filtered <- event_df[month_label == input$overviewMonthFilter]
 
+      # For unforeseen, filter by the same month
+      if (nrow(unforeseen_df) > 0) {
+        unforeseen_df[, month_label := format(Date, "%b %Y")]
+        unforeseen_filtered <- unforeseen_df[month_label == input$overviewMonthFilter]
+        unforeseen_filtered[, month_label := NULL]
+      } else {
+        unforeseen_filtered <- data.table()
+      }
+
       kpi_filtered[, month_label := NULL]
       event_filtered[, month_label := NULL]
     }
 
-    list(events = event_filtered, kpi = kpi_filtered)
+    list(events = event_filtered, kpi = kpi_filtered, unforeseen = unforeseen_filtered)
   }, ignoreNULL = FALSE)
 
   # Event Detection Summary
@@ -1510,49 +1423,49 @@ server <- function(input, output, session) {
     )
   })
 
-  # Data Coverage Summary
-  output$dataCoverageUI <- renderUI({
+  # Unforeseen Demand Events Summary
+  output$unforeseenSummaryUI <- renderUI({
     data <- filteredOverviewData()
-    event_df <- data$events
-    kpi_df <- data$kpi
+    df <- data$unforeseen
 
-    if (nrow(event_df) == 0 && nrow(kpi_df) == 0) {
-      return(tags$p("No data available for selected period.", style = "color: #999; font-style: italic;"))
+    if (nrow(df) == 0) {
+      return(tags$p("No unforeseen demand data available for selected period.", style = "color: #999; font-style: italic;"))
     }
 
-    # Calculate date range
-    all_dates <- c(event_df$date, as.POSIXct(kpi_df$date))
-    date_min <- min(all_dates, na.rm = TRUE)
-    date_max <- max(all_dates, na.rm = TRUE)
-    date_range_days <- as.numeric(difftime(date_max, date_min, units = "days"))
+    # Calculate statistics
+    total_boundaries <- nrow(df)
 
-    # Count unique days with data
-    unique_days <- length(unique(as.Date(all_dates)))
+    # Count unforeseen events by metric
+    nd_unforeseen <- sum(df$is_unforeseen_ND, na.rm = TRUE)
+    tsd_unforeseen <- sum(df$is_unforeseen_TSD, na.rm = TRUE)
+
+    # Total unique unforeseen events (any metric flagged)
+    total_unforeseen <- sum(df$is_unforeseen_ND | df$is_unforeseen_TSD | df$is_unforeseen_ENGLAND_WALES_DEMAND, na.rm = TRUE)
+    unforeseen_pct <- (total_unforeseen / total_boundaries) * 100
 
     tags$div(
       style = "padding: 10px;",
       tags$table(
         style = "width: 100%; border-collapse: collapse;",
         tags$tr(
-          tags$td(style = "padding: 8px; font-weight: bold;", "Date Range:"),
+          tags$td(style = "padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;", "SP Boundaries:"),
+          tags$td(style = "padding: 8px; text-align: right; border-bottom: 1px solid #ddd;", format(total_boundaries, big.mark = ","))
+        ),
+        tags$tr(
+          tags$td(style = "padding: 8px; font-weight: bold;", "Total Unforeseen Events:"),
           tags$td(style = "padding: 8px; text-align: right;",
-                  paste0(format(as.Date(date_min), "%d %b %Y"), " to ", format(as.Date(date_max), "%d %b %Y")))
+                  HTML(paste0(format(total_unforeseen, big.mark = ","), " (", sprintf("%.1f%%", unforeseen_pct), ")")))
         ),
         tags$tr(
-          tags$td(style = "padding: 8px; font-weight: bold;", "Duration:"),
-          tags$td(style = "padding: 8px; text-align: right;", paste(ceiling(date_range_days), "days"))
+          tags$td(style = "padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd; padding-top: 12px;", colspan = "2", "Events by Metric:")
         ),
         tags$tr(
-          tags$td(style = "padding: 8px; font-weight: bold;", "Days with Data:"),
-          tags$td(style = "padding: 8px; text-align: right;", format(unique_days, big.mark = ","))
+          tags$td(style = "padding: 8px; padding-left: 20px;", "ND:"),
+          tags$td(style = "padding: 8px; text-align: right;", format(nd_unforeseen, big.mark = ","))
         ),
         tags$tr(
-          tags$td(style = "padding: 8px; font-weight: bold; border-top: 1px solid #ddd;", "SP Boundaries:"),
-          tags$td(style = "padding: 8px; text-align: right; border-top: 1px solid #ddd;", format(nrow(event_df), big.mark = ","))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 8px; font-weight: bold;", "Frequency Readings:"),
-          tags$td(style = "padding: 8px; text-align: right;", format(nrow(kpi_df), big.mark = ","))
+          tags$td(style = "padding: 8px; padding-left: 20px;", "TSD:"),
+          tags$td(style = "padding: 8px; text-align: right;", format(tsd_unforeseen, big.mark = ","))
         )
       )
     )
@@ -2988,157 +2901,6 @@ server <- function(input, output, session) {
   })
 
   # Event Details
-  output$imbalanceEventDetailsUI <- renderUI({
-    req(input$selectedEvent)
-    df <- imbalanceSummaryData()
-
-    if (nrow(df) == 0 || input$selectedEvent == "") {
-      return(tags$p("No event selected", style = "color: #999; font-style: italic;"))
-    }
-
-    # Use event_id to find the event
-    event <- df[event_id == input$selectedEvent]
-
-    if (nrow(event) == 0) {
-      return(tags$p("Event not found", style = "color: #999; font-style: italic;"))
-    }
-
-    # Get detail data for ROCOF
-    df_detail <- imbalanceDetailData()
-    event_detail <- df_detail[event_id == input$selectedEvent]
-    rocof_max <- if(nrow(event_detail) > 0) max(abs(event_detail$rocof), na.rm = TRUE) else NA
-
-    tags$div(
-      style = "padding: 10px;",
-      tags$table(
-        style = "width: 100%; border-collapse: collapse;",
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Date & SP:"),
-          tags$td(style = "padding: 5px;", paste(format(event$date, "%Y-%m-%d %H:%M"), "/ SP", event$starting_sp))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Boundary Time:"),
-          tags$td(style = "padding: 5px;", format(event$date, "%H:%M:%S"))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Frequency Range:"),
-          tags$td(style = "padding: 5px;", sprintf("%.3f - %.3f Hz", event$min_freq_hz, event$max_freq_hz))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Frequency Change (Δf):"),
-          tags$td(style = "padding: 5px;", sprintf("%.4f Hz", event$abs_freq_change))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "ROCOF (max):"),
-          tags$td(style = "padding: 5px;", sprintf("%.4f Hz/s", rocof_max))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Event Category:"),
-          tags$td(style = "padding: 5px; color: #d62728;", event$category)
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Severity Score:"),
-          tags$td(style = "padding: 5px;", sprintf("%.2f", event$severity))
-        )
-      )
-    )
-  })
-
-  # Imbalance Summary
-  output$imbalanceSummaryUI <- renderUI({
-    req(input$selectedEvent)
-    df <- imbalanceSummaryData()
-
-    if (nrow(df) == 0 || input$selectedEvent == "") {
-      return(tags$p("No event selected", style = "color: #999; font-style: italic;"))
-    }
-
-    # Use event_id to find the event
-    event <- df[event_id == input$selectedEvent]
-
-    if (nrow(event) == 0) {
-      return(tags$p("Event not found", style = "color: #999; font-style: italic;"))
-    }
-
-    # Get detail data to calculate component averages
-    df_detail <- imbalanceDetailData()
-    event_detail <- df_detail[event_id == input$selectedEvent]
-
-    # Calculate stabilized values (last 5 seconds)
-    if (nrow(event_detail) > 0) {
-      stable_period <- event_detail[time_rel_s >= 10]
-      if (nrow(stable_period) > 0) {
-        pre_fault_imb <- mean(stable_period$imbalance_mw, na.rm = TRUE)
-        avg_lf <- mean(stable_period$lf_response_mw, na.rm = TRUE)
-        avg_hf <- mean(stable_period$hf_response_mw, na.rm = TRUE)
-        avg_damping <- mean(stable_period$demand_damping_mw, na.rm = TRUE)
-        avg_rocof <- mean(stable_period$rocof_component_mw, na.rm = TRUE)
-      } else {
-        pre_fault_imb <- NA
-        avg_lf <- NA
-        avg_hf <- NA
-        avg_damping <- NA
-        avg_rocof <- NA
-      }
-    } else {
-      pre_fault_imb <- NA
-      avg_lf <- NA
-      avg_hf <- NA
-      avg_damping <- NA
-      avg_rocof <- NA
-    }
-
-    tags$div(
-      style = "padding: 10px;",
-      tags$table(
-        style = "width: 100%; border-collapse: collapse;",
-        tags$tr(
-          tags$td(colspan = "2", style = "padding: 5px; font-weight: bold; border-bottom: 2px solid #ccc;", "Imbalance Statistics")
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Pre-fault Imbalance:"),
-          tags$td(style = "padding: 5px; text-align: right;",
-                  if(!is.na(pre_fault_imb)) sprintf("%.2f MW", pre_fault_imb) else "N/A")
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold; color: #d62728;", "Peak Imbalance:"),
-          tags$td(style = "padding: 5px; text-align: right;", sprintf("%.2f MW", event$max_abs_imbalance_mw))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Mean Imbalance:"),
-          tags$td(style = "padding: 5px; text-align: right;", sprintf("%.2f MW", event$mean_imbalance_mw))
-        ),
-        tags$tr(
-          tags$td(colspan = "2", style = "padding: 8px 5px 5px 5px; font-weight: bold; border-bottom: 2px solid #ccc;", "Component Breakdown (Stabilized)")
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "LF Response:"),
-          tags$td(style = "padding: 5px; text-align: right;",
-                  if(!is.na(avg_lf)) sprintf("%.2f MW", avg_lf) else "N/A")
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "HF Response:"),
-          tags$td(style = "padding: 5px; text-align: right;",
-                  if(!is.na(avg_hf)) sprintf("%.2f MW", avg_hf) else "N/A")
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Demand Damping:"),
-          tags$td(style = "padding: 5px; text-align: right;",
-                  if(!is.na(avg_damping)) sprintf("%.2f MW", avg_damping) else "N/A")
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "RoCoF Component:"),
-          tags$td(style = "padding: 5px; text-align: right;",
-                  if(!is.na(avg_rocof)) sprintf("%.2f MW", avg_rocof) else "N/A")
-        ),
-        tags$tr(
-          tags$td(colspan = "2", style = "padding: 8px 5px 5px 5px; font-size: 11px; color: #666;",
-                  sprintf("System values used - Inertia: %.1f GVA·s, Demand: %.0f MW",
-                          event$system_inertia_gvas, event$system_demand_mw))
-        )
-      )
-    )
-  })
 
   # Frequency Event Plot
   output$imbalanceFrequencyPlot <- renderPlotly({
@@ -3262,39 +3024,6 @@ server <- function(input, output, session) {
   })
 
   # Imbalance Summary Table
-  output$imbalanceSummaryTable <- DT::renderDataTable({
-    df <- imbalanceSummaryData()
-    if (nrow(df) == 0) return(data.table())
-
-    # Select relevant columns that exist in the data
-    display_cols <- c("date", "starting_sp", "category", "severity", "abs_freq_change",
-                      "imbalance_peak_mw", "imbalance_mean_mw", "median_imbalance_mw",
-                      "min_imbalance_mw", "max_imbalance_mw")
-    df_display <- df[, .SD, .SDcols = intersect(display_cols, names(df))]
-
-    datatable(df_display,
-              options = list(pageLength = 15, scrollX = TRUE),
-              rownames = FALSE) %>%
-      formatRound(columns = intersect(c("severity", "abs_freq_change", "imbalance_peak_mw",
-                                        "imbalance_mean_mw", "median_imbalance_mw",
-                                        "min_imbalance_mw", "max_imbalance_mw"),
-                                      names(df_display)), digits = 2)
-  })
-
-  # --- Demand Analysis Tab Logic ---
-
-  # Reactive expression to load demand data
-  demandData <- reactive({
-    req(file.exists("data/output/reports/demand_at_sp_boundaries.csv"))
-    dt <- fread("data/output/reports/demand_at_sp_boundaries.csv")
-    dt[, Date := as.Date(Date)]
-    return(dt)
-  })
-
-  demandHourlyData <- reactive({
-    req(file.exists("data/output/reports/demand_hourly_summary.csv"))
-    fread("data/output/reports/demand_hourly_summary.csv")
-  })
 
   # Reactive expression to load system dynamics data
   systemData <- reactive({
@@ -3304,246 +3033,27 @@ server <- function(input, output, session) {
     return(dt)
   })
 
-  demandDailyPeaksData <- reactive({
-    req(file.exists("data/output/reports/demand_daily_peaks.csv"))
-    dt <- fread("data/output/reports/demand_daily_peaks.csv")
-    dt[, Date := as.Date(Date)]
+  # Reactive expression to load monthly excursion data
+  monthlyExcursionData <- reactive({
+    req(file.exists("data/output/reports/frequency_excursion_monthly.csv"))
+    dt <- fread("data/output/reports/frequency_excursion_monthly.csv")
+    dt[, month := as.Date(month)]
     return(dt)
   })
 
-  # Populate month filter for demand tab
-  observe({
-    req(demandData())
-    df <- demandData()
-    df[, month_label := format(Date, "%b %Y")]
-    month_choices <- sort(unique(df$month_label), decreasing = TRUE)
-    updateSelectInput(session, "demandMonthFilter", choices = month_choices,
-                      selected = if(length(month_choices) > 0) month_choices[1] else NULL)
+  # Reactive expression to load monthly imbalance data
+  monthlyImbalanceData <- reactive({
+    req(file.exists("data/output/reports/monthly_imbalance_summary.csv"))
+    dt <- fread("data/output/reports/monthly_imbalance_summary.csv")
+    dt[, month := as.Date(paste0(month, "-01"))]
+    return(dt)
   })
 
-  # Filtered demand data
-  filteredDemandData <- eventReactive(input$updateDemandPlots, {
-    req(input$demandFilterMode)
-    df <- demandData()
-
-    if (input$demandFilterMode == "date_range") {
-      req(input$demandStartDate, input$demandEndDate)
-      df_filtered <- df[Date >= input$demandStartDate & Date <= input$demandEndDate]
-    } else if (input$demandFilterMode == "month") {
-      req(input$demandMonthFilter)
-      df[, month_label := format(Date, "%b %Y")]
-      df_filtered <- df[month_label == input$demandMonthFilter]
-      df_filtered[, month_label := NULL]
-    }
-
-    return(df_filtered)
-  }, ignoreNULL = FALSE)
-
-  # Demand Statistics
-  output$demandStatsUI <- renderUI({
-    df <- filteredDemandData()
-    if (nrow(df) == 0) {
-      return(tags$p("No data available", style = "color: #999; font-style: italic;"))
-    }
-
-    tags$div(
-      style = "padding: 10px;",
-      tags$table(
-        style = "width: 100%; border-collapse: collapse;",
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Avg ND:"),
-          tags$td(style = "padding: 5px; text-align: right;", sprintf("%.0f MW", mean(df$ND, na.rm = TRUE)))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Avg TSD:"),
-          tags$td(style = "padding: 5px; text-align: right;", sprintf("%.0f MW", mean(df$TSD, na.rm = TRUE)))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "SPs:"),
-          tags$td(style = "padding: 5px; text-align: right;", format(nrow(df), big.mark = ","))
-        )
-      )
-    )
-  })
-
-  # Peak Demand
-  output$demandPeakUI <- renderUI({
-    df <- filteredDemandData()
-    if (nrow(df) == 0) {
-      return(tags$p("No data available", style = "color: #999; font-style: italic;"))
-    }
-
-    peak_nd <- max(df$ND, na.rm = TRUE)
-    peak_tsd <- max(df$TSD, na.rm = TRUE)
-
-    tags$div(
-      style = "padding: 10px;",
-      tags$table(
-        style = "width: 100%; border-collapse: collapse;",
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold; color: #d62728;", "Peak ND:"),
-          tags$td(style = "padding: 5px; text-align: right;", sprintf("%.0f MW", peak_nd))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold; color: #1f77b4;", "Peak TSD:"),
-          tags$td(style = "padding: 5px; text-align: right;", sprintf("%.0f MW", peak_tsd))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Range:"),
-          tags$td(style = "padding: 5px; text-align: right;",
-                  paste(format(min(df$Date), "%d %b"), "-", format(max(df$Date), "%d %b")))
-        )
-      )
-    )
-  })
-
-  # Event Correlation
-  output$demandEventCorrelationUI <- renderUI({
-    df <- filteredDemandData()
-    if (nrow(df) == 0) {
-      return(tags$p("No data available", style = "color: #999; font-style: italic;"))
-    }
-
-    total_sps <- nrow(df)
-    sps_with_events <- df[HasEvent == TRUE, .N]
-    event_pct <- (sps_with_events / total_sps) * 100
-
-    tags$div(
-      style = "padding: 10px;",
-      tags$table(
-        style = "width: 100%; border-collapse: collapse;",
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Total SPs:"),
-          tags$td(style = "padding: 5px; text-align: right;", format(total_sps, big.mark = ","))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold; color: #d62728;", "With Events:"),
-          tags$td(style = "padding: 5px; text-align: right;", format(sps_with_events, big.mark = ","))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Event Rate:"),
-          tags$td(style = "padding: 5px; text-align: right;", sprintf("%.1f%%", event_pct))
-        )
-      )
-    )
-  })
-
-  # Demand Time Series
-  output$demandTimeSeriesPlot <- renderPlotly({
-    df <- filteredDemandData()
-    if (nrow(df) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5, label = "No data available for selected range", size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Create datetime for plotting - use minutes to avoid non-integer hours
-    df[, datetime := Date + minutes((SP - 1) * 30)]
-
-    # Prepare data for plotting (ND and TSD)
-    df_long <- melt(df[, .(datetime, ND, TSD)],
-                    id.vars = "datetime",
-                    variable.name = "metric",
-                    value.name = "demand")
-
-    p <- ggplot(df_long, aes(x = datetime, y = demand, color = metric, group = metric)) +
-      geom_line(linewidth = 0.8) +
-      scale_color_manual(values = c("ND" = "#d62728", "TSD" = "#1f77b4")) +
-      labs(
-        x = "Date",
-        y = "Demand (MW)",
-        color = "Metric"
-      ) +
-      theme_minimal(base_size = 11) +
-      theme(legend.position = "bottom")
-
-    ggplotly(p, tooltip = c("x", "y", "colour"))
-  })
-
-  # Demand Changes Plot
-  output$demandChangesPlot <- renderPlotly({
-    df <- filteredDemandData()
-    if (nrow(df) == 0 || !"Delta_ND" %in% names(df)) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5, label = "No demand change data available", size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Create datetime for plotting - use minutes to avoid non-integer hours
-    df[, datetime := Date + minutes((SP - 1) * 30)]
-
-    # Filter out NAs
-    df_clean <- df[!is.na(Delta_ND)]
-
-    if (nrow(df_clean) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5, label = "No demand change data available", size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    p <- ggplot(df_clean, aes(x = datetime, y = Delta_ND)) +
-      geom_col(fill = "#ff7f0e", alpha = 0.7) +
-      geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
-      labs(
-        x = "Date",
-        y = "Demand Change (ΔMW)"
-      ) +
-      theme_minimal(base_size = 11)
-
-    ggplotly(p, tooltip = c("x", "y"))
-  })
-
-  # Hourly Demand Pattern
-  output$demandHourlyPlot <- renderPlotly({
-    df_hourly <- demandHourlyData()
-
-    if (nrow(df_hourly) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5, label = "No hourly data available", size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Check if ND_Mean exists
-    if (!"ND_Mean" %in% names(df_hourly)) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5, label = "Hourly summary not computed", size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    p <- ggplot(df_hourly, aes(x = Hour)) +
-      geom_line(aes(y = ND_Mean, color = "ND"), linewidth = 1.2) +
-      geom_ribbon(aes(ymin = ND_Min, ymax = ND_Max), alpha = 0.2, fill = "#d62728") +
-      scale_color_manual(values = c("ND" = "#d62728")) +
-      scale_x_continuous(breaks = seq(0, 23, 2)) +
-      labs(
-        x = "Hour of Day",
-        y = "Demand (MW)",
-        color = "Metric"
-      ) +
-      theme_minimal(base_size = 11) +
-      theme(legend.position = "bottom")
-
-    ggplotly(p, tooltip = c("x", "y", "colour"))
-  })
-
-  # Demand Data Table
-  output$demandDataTable <- DT::renderDataTable({
-    df <- filteredDemandData()
-    if (nrow(df) == 0) return(data.table())
-
-    display_cols <- c("Date", "SP", "ND", "TSD", "Delta_ND", "Delta_TSD")
-    df_display <- df[, .SD, .SDcols = intersect(display_cols, names(df))]
-
-    datatable(df_display,
-              options = list(pageLength = 15, scrollX = TRUE),
-              rownames = FALSE,
-              filter = 'top') %>%
-      formatRound(columns = intersect(c("ND", "TSD", "Delta_ND", "Delta_TSD"), names(df_display)), digits = 0)
+  # Reactive expression to load monthly unforeseen comparison data
+  monthlyUnforeseenComparisonData <- reactive({
+    req(file.exists("data/output/reports/monthly_unforeseen_comparison.csv"))
+    dt <- fread("data/output/reports/monthly_unforeseen_comparison.csv")
+    return(dt)
   })
 
   # --- Unforeseen Demand Tab Logic ---
@@ -3574,130 +3084,6 @@ server <- function(input, output, session) {
     }
 
     return(df)
-  })
-
-  # Summary Statistics
-  output$unforeseenStatsUI <- renderUI({
-    df <- filteredUnforeseenData()
-    metric <- input$unforeseenMetric
-    flag_col <- paste0("is_unforeseen_", metric)
-
-    all_data <- unforeseenData()
-    all_data <- all_data[Date >= input$unforeseenStartDate & Date <= input$unforeseenEndDate]
-
-    n_total <- nrow(all_data)
-    n_unforeseen <- sum(all_data[[flag_col]], na.rm = TRUE)
-    pct_unforeseen <- ifelse(n_total > 0, n_unforeseen / n_total * 100, 0)
-
-    tags$div(
-      style = "padding: 10px;",
-      tags$table(
-        style = "width: 100%; border-collapse: collapse;",
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Total SPs:"),
-          tags$td(style = "padding: 5px; text-align: right;", format(n_total, big.mark = ","))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Unforeseen Events:"),
-          tags$td(style = "padding: 5px; text-align: right;", format(n_unforeseen, big.mark = ","))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Event Rate:"),
-          tags$td(style = "padding: 5px; text-align: right;", sprintf("%.2f%%", pct_unforeseen))
-        )
-      )
-    )
-  })
-
-  output$unforeseenMagnitudeUI <- renderUI({
-    df <- filteredUnforeseenData()
-    metric <- input$unforeseenMetric
-    unforeseen_col <- paste0(metric, "_unforeseen")
-    delta_col <- paste0("Delta_", metric)
-
-    if (nrow(df) == 0 || !unforeseen_col %in% names(df)) {
-      return(tags$p("No data available", style = "color: #999; font-style: italic;"))
-    }
-
-    max_unforeseen <- max(abs(df[[unforeseen_col]]), na.rm = TRUE)
-    mean_unforeseen <- mean(abs(df[[unforeseen_col]]), na.rm = TRUE)
-    p95_unforeseen <- quantile(abs(df[[unforeseen_col]]), 0.95, na.rm = TRUE)
-
-    tags$div(
-      style = "padding: 10px;",
-      tags$table(
-        style = "width: 100%; border-collapse: collapse;",
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Max Unforeseen:"),
-          tags$td(style = "padding: 5px; text-align: right;", sprintf("%.0f MW", max_unforeseen))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Mean:"),
-          tags$td(style = "padding: 5px; text-align: right;", sprintf("%.0f MW", mean_unforeseen))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "95th percentile:"),
-          tags$td(style = "padding: 5px; text-align: right;", sprintf("%.0f MW", p95_unforeseen))
-        )
-      )
-    )
-  })
-
-  output$unforeseenDampingUI <- renderUI({
-    df <- filteredUnforeseenData()
-    metric <- input$unforeseenMetric
-    damping_col <- paste0(metric, "_damping")
-
-    if (nrow(df) == 0 || !damping_col %in% names(df)) {
-      return(tags$p("No data available", style = "color: #999; font-style: italic;"))
-    }
-
-    avg_damping <- mean(abs(df[[damping_col]]), na.rm = TRUE)
-    max_damping <- max(abs(df[[damping_col]]), na.rm = TRUE)
-    pct_with_damping <- sum(abs(df[[damping_col]]) > 0, na.rm = TRUE) / nrow(df) * 100
-
-    tags$div(
-      style = "padding: 10px;",
-      tags$table(
-        style = "width: 100%; border-collapse: collapse;",
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Avg Damping:"),
-          tags$td(style = "padding: 5px; text-align: right;", sprintf("%.0f MW", avg_damping))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "Max Damping:"),
-          tags$td(style = "padding: 5px; text-align: right;", sprintf("%.0f MW", max_damping))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold;", "% with damping:"),
-          tags$td(style = "padding: 5px; text-align: right;", sprintf("%.1f%%", pct_with_damping))
-        )
-      )
-    )
-  })
-
-  output$unforeseenCausalityUI <- renderUI({
-    df <- filteredUnforeseenData()
-
-    if (nrow(df) == 0 || !"causality" %in% names(df)) {
-      return(tags$p("No data available", style = "color: #999; font-style: italic;"))
-    }
-
-    causality_counts <- df[, .N, by = causality]
-    setorder(causality_counts, -N)
-
-    tags$div(
-      style = "padding: 10px;",
-      tags$table(
-        style = "width: 100%; border-collapse: collapse;",
-        lapply(1:min(nrow(causality_counts), 4), function(i) {
-          tags$tr(
-            tags$td(style = "padding: 5px; font-weight: bold;", paste0(causality_counts$causality[i], ":")),
-            tags$td(style = "padding: 5px; text-align: right;", causality_counts$N[i])
-          )
-        })
-      )
-    )
   })
 
   # Time Series Plot
@@ -4111,13 +3497,10 @@ server <- function(input, output, session) {
 
     setorder(daily_counts, Date)
 
-    # Create time series plot
+    # Create bar chart
     p <- plot_ly(daily_counts, x = ~Date, y = ~count,
-                 type = "scatter", mode = "lines+markers",
-                 line = list(color = "#1f77b4", width = 2),
-                 marker = list(size = 4, color = "#1f77b4"),
-                 text = ~paste("Date:", Date, "<br>Events:", count),
-                 hoverinfo = "text") %>%
+                 type = "bar",
+                 marker = list(color = "#1f77b4")) %>%
       layout(
         xaxis = list(title = "Date"),
         yaxis = list(title = "Unforeseen Events Count"),
@@ -4207,42 +3590,7 @@ server <- function(input, output, session) {
       )
   })
 
-  # 2. Heatmap - Red Percentage by Date and Settlement Period
-  output$kpiHeatmapPlot <- renderPlotly({
-    df <- filteredKPIData()
-
-    if (nrow(df) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5, label = "No data available for selected range", size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Create heatmap
-    plot_ly(
-      data = df,
-      x = ~settlement_period,
-      y = ~date,
-      z = ~percentage_red,
-      type = "heatmap",
-      colors = colorRamp(c("#ffffcc", "#ffeda0", "#feb24c", "#fc4e2a", "#e31a1c", "#bd0026", "#800026")),
-      colorbar = list(title = "Red %")
-    ) %>%
-      layout(
-        title = NULL,
-        xaxis = list(
-          title = "Settlement Period",
-          dtick = 4
-        ),
-        yaxis = list(
-          title = "Date",
-          autorange = "reversed"
-        ),
-        hovermode = "closest"
-      )
-  })
-
-  # 3. Time Series - Daily Quality Metrics
+  # 2. Time Series - Daily Quality Metrics
   output$kpiTimeSeriesPlot <- renderPlotly({
     df <- filteredKPIData()
 
@@ -4308,365 +3656,322 @@ server <- function(input, output, session) {
   monthlyFilteredData <- eventReactive(input$updateMonthlyPlots, {
     list(
       events = eventData(),
-      demand = demandData(),
       unforeseen = unforeseenData(),
       system = systemData(),
+      kpi = kpiData(),
+      excursions = monthlyExcursionData(),
+      imbalance = monthlyImbalanceData(),
+      unforeseen_comparison = monthlyUnforeseenComparisonData(),
       start_date = input$monthlyStartDate,
       end_date = input$monthlyEndDate,
       metric = input$monthlyMetric
     )
   }, ignoreNULL = FALSE)
 
-  # Panel 1: Monthly Quality Metrics Time Series
+  # Panel 1: Monthly Quality Metrics Time Series (KPI Categories)
   output$monthlyQualityMetrics <- renderPlotly({
     data <- monthlyFilteredData()
-    df <- data$events
+    df <- data$kpi
 
     if (is.null(df) || nrow(df) == 0) {
       p <- ggplot() +
         annotate("text", x = 0.5, y = 0.5,
-                 label = "No event data available", size = 6) +
+                 label = "No KPI data available", size = 6) +
         theme_void()
       return(ggplotly(p))
     }
-
-    # Convert boundary_time to date
-    df[, date := as.Date(boundary_time)]
-    df[, month := format(date, "%Y-%m")]
 
     # Filter by date range
     df_filtered <- df[date >= data$start_date & date <= data$end_date]
 
-    # Aggregate by month and category
-    monthly_counts <- df_filtered[, .N, by = .(month, category)]
-
-    # Create plot
-    p <- ggplot(monthly_counts, aes(x = month, y = N, fill = category, group = category)) +
-      geom_bar(stat = "identity", position = "dodge") +
-      scale_fill_manual(
-        name = "Event Severity",
-        values = c("Red" = "#d62728", "Amber" = "#ff7f0e", "Blue" = "#1f77b4")
-      ) +
-      labs(
-        title = "Monthly Event Count by Severity Category",
-        x = "Month",
-        y = "Number of Events"
-      ) +
-      theme_minimal(base_size = 12) +
-      theme(
-        legend.position = "right",
-        axis.text.x = element_text(angle = 45, hjust = 1)
-      )
-
-    ggplotly(p, tooltip = c("x", "y", "fill")) %>%
-      layout(
-        xaxis = list(title = "Month"),
-        yaxis = list(title = "Event Count"),
-        legend = list(orientation = "v", x = 1.02, y = 0.5)
-      )
-  })
-
-  # Panel 2: Monthly Frequency Excursions
-  output$monthlyExcursions <- renderPlotly({
-    data <- monthlyFilteredData()
-    df <- data$events
-
-    if (is.null(df) || nrow(df) == 0) {
+    if (nrow(df_filtered) == 0) {
       p <- ggplot() +
         annotate("text", x = 0.5, y = 0.5,
-                 label = "No event data available", size = 6) +
+                 label = "No data in selected date range", size = 6) +
         theme_void()
       return(ggplotly(p))
     }
 
-    # Convert and filter
-    df[, date := as.Date(boundary_time)]
-    df[, month := format(date, "%Y-%m")]
-    df_filtered <- df[date >= data$start_date & date <= data$end_date]
+    # Extract year-month
+    df_filtered[, month := format(date, "%Y-%m")]
 
-    # Classify excursion magnitude
-    df_filtered[, excursion_class := fcase(
-      abs_freq_change >= 0.20, ">0.2 Hz",
-      abs_freq_change >= 0.15, "0.15-0.20 Hz",
-      abs_freq_change >= 0.10, "0.10-0.15 Hz",
-      default = "<0.10 Hz"
-    )]
+    # Calculate monthly average percentages for each quality category
+    monthly_kpi <- df_filtered[, .(
+      Red = mean(percentage_red, na.rm = TRUE),
+      Amber = mean(percentage_amber, na.rm = TRUE),
+      Blue = mean(percentage_blue, na.rm = TRUE),
+      Green = mean(percentage_green, na.rm = TRUE)
+    ), by = month]
 
-    # Count by month and class
-    monthly_excursions <- df_filtered[, .N, by = .(month, excursion_class)]
+    # Reshape to long format for plotting
+    monthly_kpi_long <- melt(monthly_kpi, id.vars = "month",
+                             variable.name = "Category",
+                             value.name = "Percentage")
 
-    # Ensure all classes present with factor levels
-    monthly_excursions[, excursion_class := factor(
-      excursion_class,
-      levels = c("<0.10 Hz", "0.10-0.15 Hz", "0.15-0.20 Hz", ">0.2 Hz")
-    )]
+    # Order months chronologically
+    monthly_kpi_long <- monthly_kpi_long[order(month)]
 
-    # Create stacked bar plot
-    p <- ggplot(monthly_excursions, aes(x = month, y = N, fill = excursion_class)) +
-      geom_bar(stat = "identity") +
-      scale_fill_manual(
-        name = "Excursion Magnitude",
-        values = c(
-          "<0.10 Hz" = "#2ca02c",
-          "0.10-0.15 Hz" = "#1f77b4",
-          "0.15-0.20 Hz" = "#ff7f0e",
-          ">0.2 Hz" = "#d62728"
-        )
+    # Create time series line plot
+    p <- ggplot(monthly_kpi_long, aes(x = month, y = Percentage, color = Category, group = Category)) +
+      geom_line(linewidth = 1.2) +
+      geom_point(size = 3) +
+      scale_color_manual(
+        name = "Quality Category",
+        values = c("Red" = "#d62728", "Amber" = "#ff7f0e", "Blue" = "#1f77b4", "Green" = "#2ca02c")
       ) +
       labs(
-        title = "Monthly Frequency Excursion Distribution by Magnitude",
         x = "Month",
-        y = "Count of Excursions"
+        y = "Average Percentage (%)"
       ) +
       theme_minimal(base_size = 12) +
       theme(
         legend.position = "right",
-        axis.text.x = element_text(angle = 45, hjust = 1)
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major = element_line(color = "gray90"),
+        panel.grid.minor = element_blank()
       )
 
-    ggplotly(p) %>%
+    ggplotly(p, tooltip = c("x", "y", "colour")) %>%
       layout(
         xaxis = list(title = "Month"),
-        yaxis = list(title = "Event Count"),
+        yaxis = list(title = "Average Percentage (%)"),
         legend = list(orientation = "v", x = 1.02, y = 0.5)
       )
   })
 
-  # Panel 3: Monthly Red Ratio
+  # Panel 2: Monthly Frequency Excursion Percentage by Threshold
   output$monthlyRedRatio <- renderPlotly({
     data <- monthlyFilteredData()
-    df <- data$events
+    df <- data$excursions
 
     if (is.null(df) || nrow(df) == 0) {
       p <- ggplot() +
         annotate("text", x = 0.5, y = 0.5,
-                 label = "No event data available", size = 6) +
+                 label = "No excursion data available", size = 6) +
         theme_void()
       return(ggplotly(p))
     }
 
-    # Convert and filter
-    df[, date := as.Date(boundary_time)]
-    df[, month := format(date, "%Y-%m")]
-    df_filtered <- df[date >= data$start_date & date <= data$end_date]
+    # Filter by date range
+    df_filtered <- df[month >= data$start_date & month <= data$end_date]
 
-    # Calculate Red ratio by month
-    monthly_ratio <- df_filtered[, .(
-      total_events = .N,
-      red_events = sum(category == "Red"),
-      red_ratio = sum(category == "Red") / .N * 100
-    ), by = month]
-
-    # Create line plot with threshold
-    p <- ggplot(monthly_ratio, aes(x = month, y = red_ratio, group = 1)) +
-      geom_line(color = "#d62728", linewidth = 1.2) +
-      geom_point(size = 3, color = "#d62728") +
-      geom_hline(yintercept = 20, linetype = "dashed", color = "black", linewidth = 0.8) +
-      annotate("text", x = 1, y = 22, label = "Target: <20%", hjust = 0, size = 4) +
-      labs(
-        title = "Monthly Red Event Ratio Trend",
-        x = "Month",
-        y = "Red Event Ratio (%)"
-      ) +
-      theme_minimal(base_size = 12) +
-      theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-    ggplotly(p, tooltip = c("x", "y")) %>%
-      layout(
-        xaxis = list(title = "Month"),
-        yaxis = list(title = "Red Event Ratio (%)")
-      )
-  })
-
-  # Panel 4: Monthly System Response Time Series
-  output$monthlyResponse <- renderPlotly({
-    data <- monthlyFilteredData()
-    df <- data$system
-
-    if (is.null(df) || nrow(df) == 0) {
+    if (nrow(df_filtered) == 0) {
       p <- ggplot() +
         annotate("text", x = 0.5, y = 0.5,
-                 label = "No system data available", size = 6) +
+                 label = "No data in selected date range", size = 6) +
         theme_void()
       return(ggplotly(p))
     }
 
-    # Convert and filter
-    df[, date := as.Date(Date)]
-    df[, month := format(date, "%Y-%m")]
-    df_filtered <- df[date >= data$start_date & date <= data$end_date]
+    # Calculate percentage of time for each threshold
+    # Total seconds in a month varies, so calculate for each month
+    df_filtered[, month_year := format(month, "%Y-%m")]
+    df_filtered[, days_in_month := as.numeric(difftime(
+      as.Date(paste0(month_year, "-01")) + months(1),
+      as.Date(paste0(month_year, "-01")),
+      units = "days"
+    ))]
+    df_filtered[, total_seconds_in_month := days_in_month * 24 * 3600]
+    df_filtered[, excursion_percentage := (total_duration_sec / total_seconds_in_month) * 100]
 
-    # Calculate monthly averages
-    monthly_response <- df_filtered[, .(
-      Primary = mean(Primary, na.rm = TRUE),
-      Secondary = mean(Secondary, na.rm = TRUE),
-      Fast_Response = mean(DR + DM + DC, na.rm = TRUE),
-      Total = mean(Primary + Secondary + DR + DM + DC + High, na.rm = TRUE)
-    ), by = month]
+    # Create threshold labels
+    df_filtered[, threshold_label := paste0(">= ", threshold, " Hz")]
 
-    # Reshape to long format
-    response_long <- melt(monthly_response, id.vars = "month",
-                          variable.name = "service_type", value.name = "capacity_mw")
+    # Order months chronologically
+    df_filtered <- df_filtered[order(month)]
 
-    # Create plot
-    p <- ggplot(response_long, aes(x = month, y = capacity_mw,
-                                     color = service_type, group = service_type)) +
-      geom_line(linewidth = 1) +
-      geom_point(size = 2.5) +
+    # Create time series line plot
+    p <- ggplot(df_filtered, aes(x = month_year, y = excursion_percentage,
+                                   color = threshold_label, group = threshold_label)) +
+      geom_line(linewidth = 1.2) +
+      geom_point(size = 3) +
       scale_color_manual(
-        name = "Response Type",
+        name = "Excursion Threshold",
         values = c(
-          "Primary" = "#1f77b4",
-          "Secondary" = "#ff7f0e",
-          "Fast_Response" = "#2ca02c",
-          "Total" = "#d62728"
+          ">= 0.1 Hz" = "#1f77b4",
+          ">= 0.15 Hz" = "#ff7f0e",
+          ">= 0.2 Hz" = "#d62728"
         )
       ) +
       labs(
-        title = "Monthly Average Response Capacity",
         x = "Month",
-        y = "Capacity (MW)"
+        y = "Percentage of Time (%)"
       ) +
       theme_minimal(base_size = 12) +
       theme(
         legend.position = "right",
-        axis.text.x = element_text(angle = 45, hjust = 1)
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major = element_line(color = "gray90"),
+        panel.grid.minor = element_blank()
       )
 
     ggplotly(p, tooltip = c("x", "y", "colour")) %>%
       layout(
         xaxis = list(title = "Month"),
-        yaxis = list(title = "Response Capacity (MW)"),
+        yaxis = list(title = "Percentage of Time (%)"),
         legend = list(orientation = "v", x = 1.02, y = 0.5)
       )
   })
 
-  # Panel 5: Monthly Demand Analysis
+  # Panel 3: Monthly Excursion Percentage by Direction (Positive vs Negative)
   output$monthlyDemand <- renderPlotly({
     data <- monthlyFilteredData()
-    df <- data$demand
-    metric <- data$metric
 
-    if (is.null(df) || nrow(df) == 0) {
+    # Load actual frequency per second data
+    req(file.exists("data/processed/frequency_per_second_with_rocof.csv"))
+    freq_data <- fread("data/processed/frequency_per_second_with_rocof.csv")
+
+    if (nrow(freq_data) == 0) {
       p <- ggplot() +
         annotate("text", x = 0.5, y = 0.5,
-                 label = "No demand data available", size = 6) +
+                 label = "No frequency data available", size = 6) +
         theme_void()
       return(ggplotly(p))
     }
 
-    # Convert and filter
-    df[, date := as.Date(Date)]
-    df[, month := format(date, "%Y-%m")]
-    df_filtered <- df[date >= data$start_date & date <= data$end_date]
+    # Parse datetime and filter by date range
+    freq_data[, dtm := as.POSIXct(dtm_sec, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")]
+    freq_data[, date := as.Date(dtm)]
+    freq_data[, month := format(date, "%Y-%m")]
 
-    # Calculate monthly statistics for selected metric
-    monthly_demand <- df_filtered[, .(
-      Mean = mean(get(metric), na.rm = TRUE),
-      Min = min(get(metric), na.rm = TRUE),
-      Max = max(get(metric), na.rm = TRUE)
+    df_filtered <- freq_data[date >= data$start_date & date <= data$end_date]
+
+    if (nrow(df_filtered) == 0) {
+      p <- ggplot() +
+        annotate("text", x = 0.5, y = 0.5,
+                 label = "No data in selected date range", size = 6) +
+        theme_void()
+      return(ggplotly(p))
+    }
+
+    # Calculate deviation from 50 Hz
+    df_filtered[, deviation := f - 50.0]
+
+    # Calculate monthly percentages based on seconds of time
+    monthly_excursions <- df_filtered[, .(
+      total_seconds = .N,
+      pos_015 = sum(deviation > 0.15, na.rm = TRUE),
+      neg_015 = sum(deviation < -0.15, na.rm = TRUE)
     ), by = month]
 
-    # Reshape to long format
-    demand_long <- melt(monthly_demand, id.vars = "month",
-                        variable.name = "statistic", value.name = "demand_mw")
+    # Calculate percentages
+    monthly_excursions[, `:=`(
+      `Positive (>50.15 Hz)` = (pos_015 / total_seconds) * 100,
+      `Negative (<49.85 Hz)` = (neg_015 / total_seconds) * 100
+    )]
 
-    # Create plot
-    p <- ggplot(demand_long, aes(x = month, y = demand_mw,
-                                   color = statistic, group = statistic)) +
-      geom_line(linewidth = 1) +
-      geom_point(size = 2.5) +
+    # Reshape to long format
+    excursion_long <- melt(monthly_excursions,
+                           id.vars = "month",
+                           measure.vars = c("Positive (>50.15 Hz)", "Negative (<49.85 Hz)"),
+                           variable.name = "Category",
+                           value.name = "Percentage")
+
+    # Order chronologically
+    excursion_long <- excursion_long[order(month)]
+
+    # Create time series line plot
+    p <- ggplot(excursion_long, aes(x = month, y = Percentage, color = Category, group = Category)) +
+      geom_line(linewidth = 1.2) +
+      geom_point(size = 3) +
       scale_color_manual(
-        name = "Statistic",
-        values = c("Mean" = "#1f77b4", "Min" = "#2ca02c", "Max" = "#d62728")
+        name = "Excursion Direction",
+        values = c(
+          "Positive (>50.15 Hz)" = "#d62728",
+          "Negative (<49.85 Hz)" = "#1f77b4"
+        )
       ) +
       labs(
-        title = paste0("Monthly ", metric, " Statistics"),
         x = "Month",
-        y = paste0(metric, " (MW)")
+        y = "Percentage of Time (%)"
       ) +
       theme_minimal(base_size = 12) +
       theme(
         legend.position = "right",
-        axis.text.x = element_text(angle = 45, hjust = 1)
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major = element_line(color = "gray90"),
+        panel.grid.minor = element_blank()
       )
 
     ggplotly(p, tooltip = c("x", "y", "colour")) %>%
       layout(
         xaxis = list(title = "Month"),
-        yaxis = list(title = paste0(metric, " Demand (MW)")),
+        yaxis = list(title = "Percentage of Time (%)"),
         legend = list(orientation = "v", x = 1.02, y = 0.5)
       )
   })
 
-  # Panel 6: Monthly Demand Changes with Damping Separation
-  output$monthlyDampingAnalysis <- renderPlotly({
+  # Panel 4: Monthly Unforeseen vs Total Demand Change Comparison
+  output$monthlyUnforeseenComparison <- renderPlotly({
     data <- monthlyFilteredData()
-    df <- data$unforeseen
-    metric <- data$metric
+    df <- data$unforeseen_comparison
+    selected_metric <- data$metric
 
     if (is.null(df) || nrow(df) == 0) {
       p <- ggplot() +
         annotate("text", x = 0.5, y = 0.5,
-                 label = "No unforeseen demand data available", size = 6) +
+                 label = "No monthly unforeseen comparison data available", size = 6) +
         theme_void()
       return(ggplotly(p))
     }
 
-    # Convert and filter
-    df[, date := as.Date(Date)]
-    df[, month := format(date, "%Y-%m")]
-    df_filtered <- df[date >= data$start_date & date <= data$end_date]
+    # Filter by metric and date range
+    df_filtered <- df[metric == selected_metric]
+    df_filtered[, month_date := as.Date(paste0(month, "-01"))]
+    df_filtered <- df_filtered[month_date >= data$start_date & month_date <= data$end_date]
 
-    # Calculate monthly averages
-    delta_col <- paste0("Delta_", metric)
-    unforeseen_col <- paste0("Unforeseen_", metric)
-    damping_col <- paste0("Damping_", metric)
+    if (nrow(df_filtered) == 0) {
+      p <- ggplot() +
+        annotate("text", x = 0.5, y = 0.5,
+                 label = "No data in selected date range", size = 6) +
+        theme_void()
+      return(ggplotly(p))
+    }
 
-    monthly_changes <- df_filtered[, .(
-      Avg_Total_Change = mean(abs(get(delta_col)), na.rm = TRUE),
-      Avg_Unforeseen = mean(abs(get(unforeseen_col)), na.rm = TRUE),
-      Avg_Damping = mean(abs(get(damping_col)), na.rm = TRUE)
-    ), by = month]
-
-    # Reshape to long format
-    changes_long <- melt(monthly_changes, id.vars = "month",
-                         variable.name = "component", value.name = "magnitude_mw")
+    # Reshape to long format for plotting
+    comparison_long <- melt(df_filtered,
+                           id.vars = "month",
+                           measure.vars = c("mean_total_change_mw", "mean_unforeseen_mw"),
+                           variable.name = "Component",
+                           value.name = "MW")
 
     # Create labels
-    changes_long[, component_label := fcase(
-      component == "Avg_Total_Change", "Total Observed Change",
-      component == "Avg_Unforeseen", "Market-Driven (Unforeseen)",
-      component == "Avg_Damping", "Frequency Damping Effect"
+    comparison_long[, component_label := fcase(
+      Component == "mean_total_change_mw", "Total Demand Change",
+      Component == "mean_unforeseen_mw", "Unforeseen Component"
     )]
 
-    # Create plot
-    p <- ggplot(changes_long, aes(x = month, y = magnitude_mw,
-                                    fill = component_label)) +
-      geom_bar(stat = "identity", position = "dodge") +
-      scale_fill_manual(
+    # Order chronologically
+    comparison_long <- comparison_long[order(month)]
+
+    # Create dual-line comparison plot
+    p <- ggplot(comparison_long, aes(x = month, y = MW,
+                                      color = component_label, group = component_label)) +
+      geom_line(linewidth = 1.2) +
+      geom_point(size = 3) +
+      scale_color_manual(
         name = "Component",
         values = c(
-          "Total Observed Change" = "#1f77b4",
-          "Market-Driven (Unforeseen)" = "#d62728",
-          "Frequency Damping Effect" = "#2ca02c"
+          "Total Demand Change" = "#1f77b4",
+          "Unforeseen Component" = "#d62728"
         )
       ) +
       labs(
-        title = paste0("Monthly Average Demand Changes - ", metric),
         x = "Month",
-        y = "Average Magnitude (MW)"
+        y = "Mean Absolute Change (MW)"
       ) +
       theme_minimal(base_size = 12) +
       theme(
         legend.position = "right",
-        axis.text.x = element_text(angle = 45, hjust = 1)
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        panel.grid.major = element_line(color = "gray90"),
+        panel.grid.minor = element_blank()
       )
 
-    ggplotly(p) %>%
+    ggplotly(p, tooltip = c("x", "y", "colour")) %>%
       layout(
         xaxis = list(title = "Month"),
-        yaxis = list(title = "Average Change (MW)"),
+        yaxis = list(title = "Mean Absolute Change (MW)"),
         legend = list(orientation = "v", x = 1.02, y = 0.5)
       )
   })

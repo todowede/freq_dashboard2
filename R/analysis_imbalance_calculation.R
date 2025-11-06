@@ -258,8 +258,11 @@ load_system_data <- function(params, config) {
       dt <- fread(demand_path)
       # Convert SETTLEMENT_DATE + SETTLEMENT_PERIOD to timestamp
       if ("SETTLEMENT_DATE" %in% names(dt) && "SETTLEMENT_PERIOD" %in% names(dt)) {
-        dt[, timestamp := as.POSIXct(SETTLEMENT_DATE, format = "%d-%b-%Y") +
-                         (as.numeric(SETTLEMENT_PERIOD) - 1) * 1800]
+        # Try multiple date formats (file has mixed formats: "01-JAN-2024" and "2025-05-01")
+        dt[, date_parsed := as.POSIXct(SETTLEMENT_DATE, format = "%d-%b-%Y")]
+        dt[is.na(date_parsed), date_parsed := as.POSIXct(SETTLEMENT_DATE, format = "%Y-%m-%d")]
+        dt[, timestamp := date_parsed + (as.numeric(SETTLEMENT_PERIOD) - 1) * 1800]
+        dt[, date_parsed := NULL]  # Remove temporary column
         # Use "ND" (National Demand) as the demand value
         if ("ND" %in% names(dt)) {
           dt[, demand_mw := as.numeric(ND)]
@@ -273,7 +276,7 @@ load_system_data <- function(params, config) {
       cat("ERROR: Failed to load demand data:", e$message, "\n")
       NULL
     })
-  } else {
+  } else{
     cat("WARN: Demand data file not found:", demand_path, "\n")
     cat("NOTE: Using default demand value of 35000 MW\n")
     system_data$demand <- data.table(
@@ -288,7 +291,12 @@ load_system_data <- function(params, config) {
   if (!is.null(response_path) && file.exists(response_path)) {
     cat("  Loading response holdings from:", response_path, "\n")
     system_data$response <- tryCatch({
-      fread(response_path)
+      dt <- fread(response_path)
+      # Convert Date + SP to timestamp
+      if ("Date" %in% names(dt) && "SP" %in% names(dt)) {
+        dt[, timestamp := as.POSIXct(Date) + (as.numeric(SP) - 1) * 1800]
+      }
+      dt
     }, error = function(e) {
       cat("ERROR: Failed to load response data:", e$message, "\n")
       NULL
@@ -317,6 +325,18 @@ load_system_data <- function(params, config) {
   }
 
   cat("INFO: System data loading complete.\n")
+
+  # Print diagnostic information
+  cat("  Inertia data: ",nrow(system_data$inertia), "rows loaded\n")
+  if (nrow(system_data$inertia) > 0) {
+    cat("    Date range:", format(min(system_data$inertia$timestamp), "%Y-%m-%d"), "to",
+        format(max(system_data$inertia$timestamp), "%Y-%m-%d"), "\n")
+  }
+  cat("  Demand data: ", nrow(system_data$demand), "rows loaded\n")
+  if (nrow(system_data$demand) > 0) {
+    cat("    Date range:", format(min(system_data$demand$timestamp), "%Y-%m-%d"), "to",
+        format(max(system_data$demand$timestamp), "%Y-%m-%d"), "\n")
+  }
 
   return(system_data)
 }
@@ -478,7 +498,7 @@ calculate_event_imbalance <- function(event, freq_data, system_data, params, con
 #' @param default_value Default value if no data is available
 #' @return The parameter value
 #'
-get_system_parameter <- function(timestamp, data_table, column_name, default_value) {
+get_system_parameter <- function(event_timestamp, data_table, column_name, default_value) {
 
   if (is.null(data_table) || nrow(data_table) == 0) {
     return(default_value)
@@ -495,7 +515,9 @@ get_system_parameter <- function(timestamp, data_table, column_name, default_val
   }
 
   # Find the row with the minimum absolute time difference to the event timestamp
-  nearest_row <- data_table[which.min(abs(difftime(timestamp, data_table$timestamp, units = "secs")))]
+  time_diffs <- abs(difftime(event_timestamp, data_table$timestamp, units = "secs"))
+  min_idx <- which.min(time_diffs)
+  nearest_row <- data_table[min_idx]
 
   if (nrow(nearest_row) > 0 && column_name %in% names(nearest_row)) {
     return(as.numeric(nearest_row[[column_name]]))

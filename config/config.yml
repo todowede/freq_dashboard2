@@ -44,11 +44,11 @@ parameters:
 
   # Imbalance calculation parameters
   imbalance_calculation:
-    calculate_for_red_events_only: true
+    calculate_for_red_events_only: false  # Calculate for ALL SP boundaries (Red and Green)
     event_selection:
       mode: "all"              # Options: "all", "top_n", "severity_filter", "combined"
-      max_events: 100          # Cap number of events (0 = no cap)
-      min_severity: 5          # Minimum severity threshold
+      max_events: 0            # Cap number of events (0 = no cap, process all)
+      min_severity: 0          # Minimum severity threshold (0 = include all)
     system_data:
       inertia_source: "data/input/system_inertia.csv"
       demand_source: "data/input/system_demand.csv"
@@ -92,4 +92,6 @@ workflow_steps:
   - "demand_analysis"
   - "unforeseen_demand"
   - "imbalance_calculation"
+  - "monthly_imbalance"
+  - "monthly_unforeseen_comparison"
   - "reporting"

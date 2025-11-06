@@ -56,9 +56,24 @@ sapply(module_files, source)
 # 4. MAIN WORKFLOW EXECUTION
 # -------------------------------------------------------------------
 main <- function(config, cli_steps) {
-  
+
   cat("INFO: Starting analysis workflow...\n")
-  
+
+  # --- Ensure output directories exist ---
+  cat("INFO: Creating output directories if they don't exist...\n")
+  required_dirs <- c(
+    config$paths$processed,
+    config$paths$output_reports,
+    config$paths$output_plots,
+    config$paths$output_imbalance
+  )
+  for (dir_path in required_dirs) {
+    if (!dir.exists(dir_path)) {
+      dir.create(dir_path, recursive = TRUE, showWarnings = FALSE)
+      cat("  - Created:", dir_path, "\n")
+    }
+  }
+
   # --- Determine which steps to run ---
   steps_to_run <- NULL
   if (length(cli_steps) > 0) {
@@ -167,6 +182,38 @@ main <- function(config, cli_steps) {
 
              event_results <- fread(event_path)
              run_imbalance_calculation(workflow_env$processed_data, event_results, config)
+           },
+
+           "monthly_imbalance" = {
+             # Requires processed frequency data
+             if (!exists("processed_data", envir = workflow_env)) {
+               cat("WARN: Loading processed frequency data from file...\n")
+               freq_path <- file.path(config$paths$processed, "frequency_per_second_with_rocof.csv")
+               if (file.exists(freq_path)) {
+                 workflow_env$processed_data <- fread(freq_path)
+                 workflow_env$processed_data[, dtm_sec := as.POSIXct(dtm_sec)]
+               } else {
+                 stop("ERROR: Cannot run 'monthly_imbalance'. Frequency data not found.", call. = FALSE)
+               }
+             }
+
+             run_monthly_imbalance_analysis(workflow_env$processed_data, config)
+           },
+
+           "monthly_unforeseen_comparison" = {
+             # Requires processed frequency data (for compatibility)
+             if (!exists("processed_data", envir = workflow_env)) {
+               cat("WARN: Loading processed frequency data from file...\n")
+               freq_path <- file.path(config$paths$processed, "frequency_per_second_with_rocof.csv")
+               if (file.exists(freq_path)) {
+                 workflow_env$processed_data <- fread(freq_path)
+                 workflow_env$processed_data[, dtm_sec := as.POSIXct(dtm_sec)]
+               } else {
+                 stop("ERROR: Cannot run 'monthly_unforeseen_comparison'. Frequency data not found.", call. = FALSE)
+               }
+             }
+
+             run_monthly_unforeseen_comparison(workflow_env$processed_data, config)
            },
 
            "reporting" = {
