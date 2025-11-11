@@ -125,6 +125,10 @@ main <- function(config, cli_steps) {
                stop("ERROR: Cannot run 'event_detection'. 'frequency_processor' must be run first.", call. = FALSE)
              }
            },
+
+           "red_event_correlation" = {
+             run_red_event_correlation(config)
+           },
            
            "kpi_monitoring" = {
              if (exists("processed_data", envir = workflow_env)) {

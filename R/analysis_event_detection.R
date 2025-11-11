@@ -1,6 +1,5 @@
 # R/analysis_event_detection.R
 # Purpose: Functions to detect and classify frequency events at SP boundaries.
-# ** VERSION 3.0 - With advanced metrics, trend, and strategic tuning detection **
 
 # --- Dependencies ---
 suppressPackageStartupMessages({
@@ -66,11 +65,11 @@ detect_trend_robustly <- function(f_values) {
 run_event_detection <- function(processed_data, config) {
   
   # --- 1. Get Parameters from Config ---
-  cat("INFO: Starting SP boundary event detection analysis (v3.0 Advanced)...\n")
+  cat("INFO: Starting SP boundary event detection analysis...\n")
   
   params <- config$parameters$event_detection
   
-  # **NEW**: Add validation checks for required config parameters
+  # Add validation checks for required config parameters
   required_params <- c("window_seconds", "delta_f_hz", "rocof_p99_hz_s")
   if (is.null(params) || !all(required_params %in% names(params))) {
     stop("Configuration error: 'event_detection' section or one of its keys (window_seconds, delta_f_hz, rocof_p99_hz_s) is missing in config.yml.", call. = FALSE)
@@ -84,7 +83,7 @@ run_event_detection <- function(processed_data, config) {
              "Δf Threshold=", thresh_df, " Hz, ",
              "p99|ROCOF| Threshold=", thresh_rocof, " Hz/s\n"))
   
-  # Robustness Check: Ensure there is enough data to analyze
+  # Check: Ensure there is enough data to analyze
   if (!is.data.table(processed_data) || nrow(processed_data) < 2) {
     cat("WARN: Not enough processed data to perform event detection. Skipping.\n")
     return(data.table())
@@ -106,8 +105,15 @@ run_event_detection <- function(processed_data, config) {
     win_start = boundary_tm - seconds(window_sec),
     win_end = boundary_tm + seconds(window_sec)
   )]
-  boundaries_dt[, starting_sp := hour(boundary_tm - seconds(1)) * 2L + (minute(boundary_tm - seconds(1)) %/% 30L) + 1L]
-  
+  # Settlement Period handling:
+  # - Raw timestamps arrive as UTC but are stored as POSIXct in the host tz (Europe/London, incl. BST).
+  # - NESO defines SP01 as 00:00-00:30 GMT, SP02 as 00:30-01:00 GMT, … SP48 as 23:30-00:00 GMT.
+  # - To keep numbering stable regardless of DST, convert each boundary back to UTC before converting it
+  #   into a half-hour slot and wrap the result into [1, 48].
+  boundaries_dt[, starting_sp := {
+    boundary_utc <- with_tz(boundary_tm, tzone = "UTC")
+    as.integer((((hour(boundary_utc) * 60L) + minute(boundary_utc)) %/% 30L) %% 48L + 1L)
+  }]
   # --- 3. Extract Window Data using a Non-Equi Join ---
   setkey(processed_data, dtm_sec)
   
@@ -123,8 +129,8 @@ run_event_detection <- function(processed_data, config) {
                                 )
   ]
   
-  # --- 4. Calculate Advanced Metrics for Each Window ---
-  cat("INFO: Calculating advanced metrics for", format(nrow(boundaries_dt), big.mark = ","), "SP boundaries...\n")
+  # --- 4. Calculate Metrics for Each Window ---
+  cat("INFO: Calculating metrics for", format(nrow(boundaries_dt), big.mark = ","), "SP boundaries...\n")
   
   results <- window_data[, {
     
@@ -135,15 +141,15 @@ run_event_detection <- function(processed_data, config) {
     rocof_abs <- abs(rocof[!is.na(rocof)])
     rocof_p99 <- if (length(rocof_abs) > 0) as.numeric(quantile(rocof_abs, 0.99)) else 0
     
-    # ADVANCED: Trend Detection using linear regression
+    # Trend Detection using linear regression
     trend <- detect_trend_robustly(f)
     
-    # ADVANCED: Event Timing (Pre vs. Post Boundary)
+    # Event Timing (Pre vs. Post Boundary)
     min_time_rel <- window_dtm[which.min(f)] - boundary_tm
     max_time_rel <- window_dtm[which.max(f)] - boundary_tm
     event_timing <- if (abs(min_time_rel) < abs(max_time_rel)) "Min First" else "Max First"
     
-    # ADVANCED: Strategic Tuning Detection
+    # Strategic Tuning Detection
     is_tuning_event <- FALSE
     if (length(rocof_abs) > 10) {
       if (mean(rocof_abs) < 0.005 && sd(rocof_abs) < 0.003) {
@@ -151,7 +157,7 @@ run_event_detection <- function(processed_data, config) {
       }
     }
     
-    # ADVANCED: Severity Score for ranking events
+    # Severity Score for ranking events
     severity <- (abs_freq_change / thresh_df) + (rocof_p99 / thresh_rocof)
     
     # Return a list of all calculated metrics for this window
@@ -168,7 +174,6 @@ run_event_detection <- function(processed_data, config) {
   }, by = .(boundary_tm, starting_sp)]
   
   # --- 5. Classify Events and Finalize ---
-  # Enhanced classification with Tuning detection
   results[, category := fcase(
     is_tuning == TRUE, "Tuning",
     abs_freq_change > thresh_df & rocof_p99 > thresh_rocof, "Red",
@@ -222,7 +227,7 @@ run_event_detection <- function(processed_data, config) {
 #'
 #' This function creates individual frequency profile plots for Red events to allow
 #' manual inspection and verification of the automated classification. The plots
-#' show the 2-minute window around each SP boundary with detailed metrics.
+#' show the 30-seconds window around each SP boundary with detailed metrics.
 #'
 #' @param event_results A data.table from run_event_detection with event classifications.
 #' @param processed_data A data.table with per-second frequency and ROCOF data.

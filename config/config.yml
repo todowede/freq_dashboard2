@@ -45,6 +45,7 @@ parameters:
   # Imbalance calculation parameters
   imbalance_calculation:
     calculate_for_red_events_only: false  # Calculate for ALL SP boundaries (Red and Green)
+    window_seconds: 120                   # Imbalance analysis window (±seconds around each SP boundary)
     event_selection:
       mode: "all"              # Options: "all", "top_n", "severity_filter", "combined"
       max_events: 0            # Cap number of events (0 = no cap, process all)
@@ -86,6 +87,7 @@ workflow_steps:
   - "data_loader"
   - "frequency_processor"
   - "event_detection"
+  - "red_event_correlation"
   - "kpi_monitoring"
   - "frequency_excursion"
   - "response_holding"

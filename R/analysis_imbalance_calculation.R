@@ -134,6 +134,58 @@ run_imbalance_calculation <- function(processed_freq_data, event_results, config
   fwrite(summary_results, summary_path)
   cat("SUCCESS: Saved summary statistics to:", summary_path, "\n")
 
+  # Update event detection output with imbalance metric for every SP
+  event_path <- file.path(config$paths$output_reports, "sp_boundary_events.csv")
+  if (file.exists(event_path)) {
+    cat("INFO: Updating SP boundary events with imbalance estimates...\n")
+    events_dt <- fread(event_path)
+    # Preserve original ordering for later restoration
+    if ("imbalance_mw" %in% names(events_dt)) {
+      events_dt[, imbalance_mw := NULL]
+    }
+
+    events_dt[, boundary_time_dt := as.POSIXct(boundary_time, format = "%Y-%m-%dT%H:%M:%OSZ", tz = "UTC")]
+    if (any(is.na(events_dt$boundary_time_dt))) {
+      events_dt[, boundary_time_dt := as.POSIXct(boundary_time, tz = "UTC")]
+    }
+
+    imbalance_join <- summary_results[, .(
+      boundary_time,
+      starting_sp,
+      imbalance_mw = round(boundary_imbalance_mw, 1)
+    )]
+
+    events_dt <- merge(
+      events_dt,
+      imbalance_join,
+      by.x = c("starting_sp", "boundary_time_dt"),
+      by.y = c("starting_sp", "boundary_time"),
+      all.x = TRUE,
+      sort = FALSE
+    )
+
+    events_dt[, boundary_time := format(boundary_time_dt, "%Y-%m-%dT%H:%M:%SZ")]
+    events_dt[, boundary_time_dt := NULL]
+
+    standard_order <- c(
+      "date", "starting_sp", "boundary_time",
+      "min_f", "max_f", "abs_freq_change", "rocof_p99",
+      "trend", "event_timing", "category", "category_old",
+      "severity", "imbalance_mw"
+    )
+    remaining_cols <- setdiff(names(events_dt), standard_order)
+    setcolorder(events_dt, c(intersect(standard_order, names(events_dt)), remaining_cols))
+
+    fwrite(events_dt, event_path)
+    missing_imbalance <- events_dt[is.na(imbalance_mw), .N]
+    if (missing_imbalance > 0) {
+      cat("WARN:", missing_imbalance, "SP boundaries do not have imbalance estimates (check event selection settings).\n")
+    }
+    cat("SUCCESS: sp_boundary_events.csv updated with imbalance_mw column.\n")
+  } else {
+    cat("WARN: Event detection output not found; skipping imbalance column update.\n")
+  }
+
   cat("\n============================================================\n")
   cat("SUCCESS: Imbalance calculation complete!\n")
   cat("============================================================\n\n")
@@ -150,7 +202,7 @@ run_imbalance_calculation <- function(processed_freq_data, event_results, config
 #'
 select_events_for_analysis <- function(event_results, params) {
 
-  calculate_red_only <- params$calculate_for_red_events_only %||% TRUE
+  calculate_red_only <- params$calculate_for_red_events_only %||% FALSE
 
   if (calculate_red_only) {
     cat("INFO: Filtering for Red events only (as per configuration)...\n")
@@ -357,7 +409,9 @@ load_system_data <- function(params, config) {
 calculate_event_imbalance <- function(event, freq_data, system_data, params, config) {
 
   # --- 1. Extract Window Data ---
-  window_sec <- config$parameters$event_detection$window_seconds %||% 120
+  window_sec <- params$window_seconds %||% 120
+  # Legacy behaviour (tight ±event-detection window). Uncomment to revert:
+  # window_sec <- config$parameters$event_detection$window_seconds %||% window_sec
   boundary_time <- as.POSIXct(event$boundary_time)
 
   window_start <- boundary_time - seconds(window_sec)
@@ -434,9 +488,9 @@ calculate_event_imbalance <- function(event, freq_data, system_data, params, con
   # --- 4. Calculate Total Imbalance ---
   # At any moment: Imbalance + Response = Demand_change + RoCoF_effect
   # Solving for Imbalance:
-  # Imb = -LF_response - HF_response - Demand_damping + RoCoF_component
+  # Imb = -LF_response + Demand_damping + HF_response + RoCoF_component
   # (LF_response is positive when helping, so we subtract it to get the original imbalance)
-  window_data[, imbalance_mw := -lf_response_mw - hf_response_mw - demand_damping_mw + rocof_component_mw]
+  window_data[, imbalance_mw := -lf_response_mw + hf_response_mw + demand_damping_mw + rocof_component_mw]
 
   # --- 5. Add Event Metadata ---
   window_data[, `:=`(
@@ -520,7 +574,10 @@ get_system_parameter <- function(event_timestamp, data_table, column_name, defau
   nearest_row <- data_table[min_idx]
 
   if (nrow(nearest_row) > 0 && column_name %in% names(nearest_row)) {
-    return(as.numeric(nearest_row[[column_name]]))
+    value <- as.numeric(nearest_row[[column_name]])
+    if (!is.na(value)) {
+      return(value)
+    }
   }
 
   return(default_value)
@@ -562,14 +619,22 @@ get_response_holdings <- function(timestamp, system_data, params) {
     return(default_response)
   }
 
-  # Return the values from the nearest row, falling back to defaults if a column is missing
+  pick_value <- function(value, default) {
+    if (is.null(value) || length(value) == 0 || is.na(value)) {
+      default
+    } else {
+      as.numeric(value)
+    }
+  }
+
+  # Return the values from the nearest row, falling back to defaults if a column is missing or NA
   return(list(
-    primary_mw = nearest_row$primary_mw %||% default_response$primary_mw,
-    secondary_mw = nearest_row$secondary_mw %||% default_response$secondary_mw,
-    high_mw = nearest_row$high_mw %||% default_response$high_mw,
-    dr_mw = nearest_row$dr_mw %||% default_response$dr_mw,
-    dm_mw = nearest_row$dm_mw %||% default_response$dm_mw,
-    dc_mw = nearest_row$dc_mw %||% default_response$dc_mw
+    primary_mw = pick_value(nearest_row$primary_mw, default_response$primary_mw),
+    secondary_mw = pick_value(nearest_row$secondary_mw, default_response$secondary_mw),
+    high_mw = pick_value(nearest_row$high_mw, default_response$high_mw),
+    dr_mw = pick_value(nearest_row$dr_mw, default_response$dr_mw),
+    dm_mw = pick_value(nearest_row$dm_mw, default_response$dm_mw),
+    dc_mw = pick_value(nearest_row$dc_mw, default_response$dc_mw)
   ))
 }
 
@@ -728,6 +793,7 @@ create_summary_statistics <- function(imbalance_results, events_analyzed) {
     p05_imbalance_mw = quantile(imbalance_mw, 0.05, na.rm = TRUE),
     p95_imbalance_mw = quantile(imbalance_mw, 0.95, na.rm = TRUE),
     max_abs_imbalance_mw = max(abs(imbalance_mw), na.rm = TRUE),
+    boundary_imbalance_mw = imbalance_mw[which.min(abs(time_rel_s))],
     mean_freq_hz = mean(f, na.rm = TRUE),
     min_freq_hz = min(f, na.rm = TRUE),
     max_freq_hz = max(f, na.rm = TRUE),

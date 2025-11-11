@@ -52,7 +52,6 @@ ui <- dashboardPage(
       menuItem("Frequency KPI", tabName = "kpi"),
       menuItem("Frequency Excursion", tabName = "excursion"),
       menuItem("Response Holding", tabName = "response"),
-      menuItem("Unforeseen Demand", tabName = "unforeseen"),
       menuItem("Monthly Trends", tabName = "monthly_trends")
     )
   ),
@@ -191,25 +190,16 @@ ui <- dashboardPage(
 
               # Summary Statistics Row
               fluidRow(
-                # Event Detection Summary
-                column(4,
+                column(6,
                        box(
                          title = "SP Boundary Events Summary", status = "danger", solidHeader = TRUE, width = NULL,
                          uiOutput("eventSummaryUI")
                        )
                 ),
-                # Frequency KPI Summary
-                column(4,
+                column(6,
                        box(
                          title = "Frequency KPI Summary", status = "info", solidHeader = TRUE, width = NULL,
                          uiOutput("kpiSummaryUI")
-                       )
-                ),
-                # Unforeseen Demand Events Summary
-                column(4,
-                       box(
-                         title = "Unforeseen Demand Events Summary", status = "success", solidHeader = TRUE, width = NULL,
-                         uiOutput("unforeseenSummaryUI")
                        )
                 )
               )
@@ -220,44 +210,23 @@ ui <- dashboardPage(
               fluidRow(
                 box(
                   title = "Event Category Definitions", status = "info", solidHeader = TRUE, width = 12,
-                  collapsible = TRUE, collapsed = TRUE,
+                  collapsible = TRUE, collapsed = FALSE,
                   tags$div(
                     style = "padding: 10px;",
-                    tags$p(strong("Each 30-minute Settlement Period (SP) boundary is analyzed for frequency disturbances:")),
+                    tags$p(strong("Detects and classifies frequency disturbances at 30-minute settlement period boundaries.")),
                     tags$hr(),
-                    tags$div(
-                      style = "margin-bottom: 10px;",
-                      tags$span(style = "color: #d62728; font-weight: bold;", "RED:"),
-                      " Significant frequency disturbance",
-                      tags$ul(
-                        tags$li(strong("Criteria:"), " |Δf| > 0.1 Hz ", strong("AND"), " p99|ROCOF| > 0.01 Hz/s"),
-                        tags$li("Indicates unexpected/problematic events requiring investigation")
-                      )
-                    ),
-                    tags$div(
-                      style = "margin-bottom: 10px;",
-                      tags$span(style = "color: #ff7f0e; font-weight: bold;", "TUNING:"),
-                      " Strategic frequency adjustment",
-                      tags$ul(
-                        tags$li(strong("Criteria:"), " Mean |ROCOF| < 0.005 Hz/s ", strong("AND"), " SD(ROCOF) < 0.003 Hz/s"),
-                        tags$li("Slow, controlled frequency changes - intentional system tuning")
-                      )
-                    ),
-                    tags$div(
-                      style = "margin-bottom: 5px;",
-                      tags$span(style = "color: #2ca02c; font-weight: bold;", "GREEN:"),
-                      " Normal operation",
-                      tags$ul(
-                        tags$li(strong("Criteria:"), " All other events (below Red thresholds and not Tuning)"),
-                        tags$li("Stable system behavior with acceptable frequency variations")
-                      )
-                    ),
+                    tags$p("Analysis window = ±15 seconds around each SP boundary (configurable)."),
+                    tags$p("Red criteria: Δf > 0.1 Hz AND p99|ROCOF| > 0.01 Hz/s; otherwise the event is labelled Green."),
                     tags$hr(),
-                    tags$p(
-                      style = "font-size: 12px; color: #666;",
-                      strong("Note:"), " Analysis window = ±15 seconds around each SP boundary. ",
-                      "Δf = max frequency - min frequency in window. ",
-                      "p99|ROCOF| = 99th percentile of absolute Rate of Change of Frequency."
+                    tags$p(strong("Steps:")),
+                    tags$ol(
+                      tags$li("Load processed per-second dataset containing `dtm_sec`, `f`, and `rocof`."),
+                      tags$li("Construct all SP boundaries covering the data range and add ±window (e.g. ±15 s) to define analysis windows."),
+                      tags$li("Use a non-equi join to pull the per-second frequency/ROCOF samples inside each window."),
+                      tags$li("For every boundary compute min_f, max_f, Δf = |max - min|, p99 of |ROCOF|, and severity inputs."),
+                      tags$li("Compute severity for ranking/sorting = ((Δf / Δf threshold) + (p99|ROCOF| / ROCOF threshold))."),
+                      tags$li("Classify events: Red if both Δf and p99 thresholds are exceeded; otherwise mark Green."),
+                      tags$li("Save the output to `sp_boundary_events.csv` for downstream tabs.")
                     )
                   )
                 )
@@ -266,11 +235,11 @@ ui <- dashboardPage(
               fluidRow(
                 box(
                   title = NULL, status = "primary", solidHeader = FALSE, width = 12,
-                  tabsetPanel(
-                    id = "eventExploreTabs",
-                    # Subtab 1: Event Table
-                    tabPanel(
-                      title = "Event Table",
+                    tabsetPanel(
+                      id = "eventExploreTabs",
+                      # Subtab 1: Event Table
+                      tabPanel(
+                        title = "Event Table",
                       value = "event_table",
                       br(),
                       fluidRow(
@@ -293,83 +262,32 @@ ui <- dashboardPage(
                                )
                         )
                       )
-                    ),
-                    # Subtab 2: Event Plots
-                    tabPanel(
-                      title = "Event Plots",
-                      value = "event_plots",
-                      br(),
-                      fluidRow(
-                        column(12,
-                               box(
-                                 title = "Plot Selection Options", status = "warning", solidHeader = TRUE, width = NULL,
-                                 fluidRow(
-                                   column(3,
-                                          selectInput("plotStrategy", "Selection Strategy:",
-                                                    choices = c("All Red Events" = "all",
-                                                              "Top N Events" = "top_N",
-                                                              "Worst N (by Severity)" = "worst_N",
-                                                              "Best N (by Severity)" = "best_N",
-                                                              "Random N Events" = "random_N"),
-                                                    selected = "worst_N")
-                                   ),
-                                   column(3,
-                                          numericInput("plotCount", "Number of Events (N):",
-                                                     value = 10, min = 1, max = 100, step = 1)
-                                   ),
-                                   column(3,
-                                          selectInput("plotSortBy", "Sort By:",
-                                                    choices = c("Severity Score" = "severity",
-                                                              "Frequency Change" = "abs_freq_change",
-                                                              "ROCOF p99" = "rocof_p99",
-                                                              "Chronological" = "chronological"),
-                                                    selected = "severity")
-                                   ),
-                                   column(3,
-                                          div(style = "margin-top: 25px;",
-                                              actionButton("updateEventPlots", "Load Plots",
-                                                         class = "btn-primary",
-                                                         style = "width: 100%;")
-                                          )
-                                   )
-                                 )
-                               )
-                        )
                       ),
-                      fluidRow(
-                        column(12,
-                               box(
-                                 title = "Verification Plots Gallery", status = "primary", solidHeader = TRUE, width = NULL,
-                                 uiOutput("eventPlotsGalleryUI")
-                               )
-                        )
-                      )
-                    ),
-                    # Subtab 3: Imbalance
-                    tabPanel(
-                      title = "Imbalance",
-                      value = "imbalance",
+                      # Subtab 2b: Events Analysis
+                      tabPanel(
+                        title = "Imbalance",
+                        value = "imbalance",
                       br(),
                       fluidRow(
                         column(12,
-                               box(
-                                 title = "Power Imbalance from Frequency Events", status = "info", solidHeader = TRUE, width = NULL,
-                                 collapsible = TRUE, collapsed = TRUE,
-                                 tags$div(
-                                   style = "padding: 10px;",
-                                   tags$p("This analysis reverse-engineers the power imbalance (MW) that caused each frequency deviation."),
-                                   tags$p(strong("Calculation components:")),
-                                   tags$ul(
-                                     tags$li("Low frequency response (from system dynamics data)"),
-                                     tags$li("High frequency response"),
-                                     tags$li("Demand damping (2.5% per Hz)"),
-                                     tags$li("RoCoF component (inertia × df/dt)")
-                                   ),
-                                   tags$p(strong("Formula:"), " Imbalance = -LF_response + Demand_damping + HF_response + RoCoF_component"),
-                                   tags$p(style = "font-size: 12px; color: #666;",
-                                          strong("Note:"), " Default values used: Inertia = 150 GVA·s, Demand = 35,000 MW")
-                                 )
-                               )
+                                box(
+                                  title = "Power Imbalance from Frequency Events", status = "info", solidHeader = TRUE, width = NULL,
+                                  collapsible = TRUE, collapsed = FALSE,
+                                  tags$div(
+                                    style = "padding: 10px;",
+                                    tags$p(strong("Inverse calculation of system imbalance from frequency deviations at SP boundaries.")),
+                                    tags$p(strong("Formula: "), "Imbalance = -LF_response + Demand_damping + HF_response + RoCoF_component"),
+                                    tags$hr(),
+                                    tags$p(strong("Where:")),
+                                    tags$ul(
+                                      tags$li(strong("LF_response:"), " Low frequency response (Primary, Secondary, High, DR, DM)."),
+                                      tags$li(strong("Demand_damping:"), " Natural demand change due to frequency (2.5% per Hz)."),
+                                      tags$li(strong("HF_response:"), " High frequency response (for f > 50 Hz)."),
+                                      tags$li(strong("RoCoF_component:"), " Rate-of-change contribution, e.g. 2H × df/dt.")
+                                    ),
+                                    tags$hr()
+                                  )
+                                )
                         )
                       ),
                       # Event Selection
@@ -383,40 +301,177 @@ ui <- dashboardPage(
                                                       choices = c("All Red Events" = "all", "Top 10 Severity" = "top10", "Latest 10" = "latest10"),
                                                       selected = "top10")
                                    ),
-                                   column(4,
-                                          uiOutput("imbalanceEventSelectUI")
+                                   column(
+                                     4,
+                                     div(
+                                       style = "display: flex; gap: 10px; padding-top: 25px;",
+                                       actionButton("imbalancePrev", label = NULL, icon = icon("chevron-left"), class = "btn-default", width = "50%"),
+                                       actionButton("imbalanceNext", label = NULL, icon = icon("chevron-right"), class = "btn-default", width = "50%")
+                                     )
                                    ),
-                                   column(4,
-                                          br(),
-                                          actionButton("updateImbalancePlot", "Load Event Data",
-                                                       class = "btn-primary",
-                                                       style = "width: 100%;")
+                                   column(
+                                     4,
+                                     uiOutput("imbalanceEventLabel")
                                    )
                                  )
                                )
                         )
                       ),
-                      # Frequency Event Plot
+                      # Frequency & Imbalance Plots
                       fluidRow(
-                        column(12,
-                               box(
-                                 title = "Frequency Event (±15 seconds around SP boundary)",
-                                 status = "warning", solidHeader = TRUE, width = NULL,
-                                 plotlyOutput("imbalanceFrequencyPlot", height = "400px")
-                               )
-                        )
-                      ),
-                      # Imbalance Time Series Plot
-                      fluidRow(
-                        column(12,
-                               box(
-                                 title = "Power Imbalance Time Series (±15 seconds around SP boundary)",
-                                 status = "primary", solidHeader = TRUE, width = NULL,
-                                 plotlyOutput("imbalanceTimeSeriesPlot", height = "400px")
-                               )
+                        column(
+                          6,
+                          box(
+                            title = "Frequency Event (±window around SP boundary)",
+                            status = "warning",
+                            solidHeader = TRUE,
+                            width = NULL,
+                            plotlyOutput("imbalanceFrequencyPlot", height = "380px")
+                          )
+                        ),
+                        column(
+                          6,
+                          box(
+                            title = "Power Imbalance Time Series",
+                            status = "primary",
+                            solidHeader = TRUE,
+                            width = NULL,
+                            plotlyOutput("imbalanceTimeSeriesPlot", height = "380px")
+                          )
                         )
                       )
-                    )
+                    ),
+                      tabPanel(
+                        title = "Events Analysis",
+                        value = "event_analysis",
+                        br(),
+                        fluidRow(
+                          column(
+                            12,
+                            box(
+                              title = "Analysis Controls",
+                              status = "warning",
+                              solidHeader = TRUE,
+                              width = NULL,
+                              fluidRow(
+                                column(
+                                  6,
+                                  radioButtons(
+                                    "eventAnalysisGranularity",
+                                    "View",
+                                    choices = c("SP" = "Daily",
+                                                "Daily" = "MonthlyCalendar",
+                                                "Weekly" = "Weekly",
+                                                "Monthly Overview" = "Monthly"),
+                                    inline = TRUE,
+                                    selected = "Daily"
+                                  )
+                                ),
+                                column(
+                                  6,
+                                  uiOutput("eventAnalysisSelector")
+                                )
+                              ),
+                              helpText("Visualisations consider Red events only; SP axes show all 48 periods even when counts are zero.")
+                            )
+                          )
+                        ),
+                        conditionalPanel(
+                          condition = "input.eventAnalysisGranularity == 'Weekly'",
+                          fluidRow(
+                            column(
+                              6,
+                              selectInput("eventWeeklyRangeStart", "Start Week:", choices = NULL)
+                            ),
+                            column(
+                              6,
+                              selectInput("eventWeeklyRangeEnd", "End Week:", choices = NULL)
+                            )
+                          )
+                        ),
+                        conditionalPanel(
+                          condition = "input.eventAnalysisGranularity == 'MonthlyCalendar'",
+                          fluidRow(
+                            column(
+                              12,
+                              div(style = "margin-bottom: 10px;",
+                                  checkboxInput("toggleRemitDiamonds", "Show REMIT trip markers", TRUE))
+                            )
+                          )
+                        ),
+                        conditionalPanel(
+                          condition = "input.eventAnalysisGranularity != 'Daily'",
+                          fluidRow(
+                            column(
+                              12,
+                              box(
+                                title = "",
+                                status = "info",
+                                solidHeader = TRUE,
+                                width = NULL,
+                                plotlyOutput("eventAnalysisPrimaryPlot", height = "320px")
+                              )
+                            )
+                          )
+                        ),
+                        conditionalPanel(
+                          condition = "input.eventAnalysisGranularity == 'Weekly'",
+                          fluidRow(
+                            column(
+                              12,
+                              box(
+                                title = "Weekly Avg |Imbalance| (MW)",
+                                status = "info",
+                                solidHeader = TRUE,
+                                width = NULL,
+                                plotlyOutput("eventWeeklyImbalancePlot", height = "320px")
+                              )
+                            )
+                          )
+                        ),
+                        conditionalPanel(
+                          condition = "input.eventAnalysisGranularity == 'Daily'",
+                          fluidRow(
+                            column(
+                              12,
+                              box(
+                                title = "SP Distribution",
+                                status = "danger",
+                                solidHeader = TRUE,
+                                width = NULL,
+                                plotlyOutput("eventAnalysisDailyPlot", height = "350px")
+                              )
+                            )
+                          ),
+                          fluidRow(
+                            column(
+                              12,
+                              box(
+                                title = "Forecast Absolute Error by Settlement Period",
+                                status = "primary",
+                                solidHeader = TRUE,
+                                width = NULL,
+                                plotlyOutput("eventAnalysisDailyDemandPlot", height = "320px")
+                              )
+                            )
+                          )
+                        ),
+                        conditionalPanel(
+                          condition = "input.eventAnalysisGranularity == 'Monthly'",
+                          fluidRow(
+                            column(
+                              12,
+                              box(
+                                title = "Monthly Average Severity (Freq Deviation + ROCOF)",
+                                status = "danger",
+                                solidHeader = TRUE,
+                                width = NULL,
+                                plotlyOutput("eventAnalysisMonthlyMetricsPlot", height = "350px")
+                              )
+                            )
+                            )
+                          )
+                        ),
                   )
                 )
               )
@@ -552,6 +607,40 @@ ui <- dashboardPage(
                       fluidRow(
                         column(12,
                                box(
+                                 title = "KPI Metrics",
+                                 status = "info", solidHeader = TRUE, width = NULL,
+                                 collapsible = TRUE, collapsed = FALSE,
+                                 tags$div(
+                                   style = "padding: 10px;",
+                                   tags$p("Classifies frequency quality performance into four categories (RED, AMBER, BLUE, GREEN) based on deviation and ROCOF thresholds."),
+                                   tags$hr(),
+                                   tags$p(strong("KPI thresholds (from config.yml):")),
+                                   tags$ul(
+                                     tags$li(strong("Red:"), " |Δf| > ", config$parameters$kpi_monitoring$freq_dev_red,
+                                             " Hz OR |ROCOF| > ", config$parameters$kpi_monitoring$rocof_ref_hz_s, " Hz/s"),
+                                     tags$li(strong("Amber:"), " |Δf| > ", config$parameters$kpi_monitoring$freq_dev_amber,
+                                             " Hz (when Red criteria not met)"),
+                                     tags$li(strong("Blue:"), " |Δf| > ", config$parameters$kpi_monitoring$freq_dev_blue,
+                                             " Hz (when Amber/Red criteria not met)"),
+                                     tags$li(strong("Green:"), " Remaining seconds with |Δf| ≤ ", config$parameters$kpi_monitoring$freq_dev_blue,
+                                             " Hz and |ROCOF| ≤ ", config$parameters$kpi_monitoring$rocof_ref_hz_s, " Hz/s")
+                                   ),
+                                   tags$hr(),
+                                   tags$p(strong("Steps:")),
+                                   tags$ol(
+                                     tags$li("Load processed per-second dataset (`frequency_processor` output with `dtm_sec`, `f`, `rocof`)."),
+                                     tags$li("Compute per-second frequency deviation |f−50| and classify each second using the thresholds above."),
+                                     tags$li("Assign each timestamp to a date and settlement period (SP01–SP48)."),
+                                     tags$li("Count seconds per category and convert to percentages for every SP."),
+                                     tags$li("Save the SP-level percentages to `data/output/reports/sp_category_percentages.csv` for use in the KPI tab.")
+                                   )
+                                 )
+                               )
+                        )
+                      ),
+                      fluidRow(
+                        column(12,
+                               box(
                                  title = "Quality Distribution by Settlement Period (Stacked Bar Chart)",
                                  status = "primary", solidHeader = TRUE, width = NULL,
                                  plotlyOutput("kpiStackedBarPlot", height = "500px")
@@ -582,7 +671,103 @@ ui <- dashboardPage(
                                )
                         )
                       )
-                    )
+                    ),
+                    tabPanel(
+                      title = "Weekly",
+                      value = "kpi_weekly",
+                      br(),
+                      fluidRow(
+                        box(
+                          title = "Weekly KPI Filters",
+                          status = "warning",
+                          solidHeader = TRUE,
+                          width = 12,
+                          tags$style(HTML("
+                            .box-body { overflow: visible !important; }
+                            .datepicker { z-index: 9999 !important; }
+                          ")),
+                          fluidRow(
+                            column(4, uiOutput("kpiWeeklyDateRangeUI")),
+                            column(4,
+                                   br(),
+                                   actionButton(
+                                     "updateKpiWeeklyPlot",
+                                     "Update Plot",
+                                     class = "btn-primary",
+                                     style = "width: 100%;"
+                                   )
+                            ),
+                            column(4,
+                                   checkboxGroupInput(
+                                     "kpiWeeklyCategories",
+                                     "Quality Categories:",
+                                     choices = c("Red", "Amber", "Blue", "Green"),
+                                     selected = c("Red", "Amber", "Blue", "Green"),
+                                     inline = TRUE
+                                   ),
+                                   helpText("Choose which categories to display.")
+                            )
+                          )
+                        )
+                      ),
+                      fluidRow(
+                        box(
+                          title = "Weekly Frequency KPI",
+                          status = "primary",
+                          solidHeader = TRUE,
+                          width = 12,
+                          plotlyOutput("weeklyQualityMetrics", height = "450px")
+                        )
+                      )
+                    ),
+                    tabPanel(
+                      title = "Monthly",
+                      value = "kpi_monthly",
+                      br(),
+                      fluidRow(
+                        box(
+                          title = "Monthly KPI Filters",
+                          status = "warning",
+                          solidHeader = TRUE,
+                          width = 12,
+                          tags$style(HTML("
+                            .box-body { overflow: visible !important; }
+                            .datepicker { z-index: 9999 !important; }
+                          ")),
+                          fluidRow(
+                            column(4, uiOutput("kpiMonthlyDateRangeUI")),
+                            column(4,
+                                   br(),
+                                   actionButton(
+                                     "updateKpiMonthlyPlot",
+                                     "Update Plot",
+                                     class = "btn-primary",
+                                     style = "width: 100%;"
+                                   )
+                            ),
+                            column(4,
+                                   checkboxGroupInput(
+                                     "kpiMonthlyCategories",
+                                     "Quality Categories:",
+                                     choices = c("Red", "Amber", "Blue", "Green"),
+                                     selected = c("Red", "Amber", "Blue", "Green"),
+                                     inline = TRUE
+                                   ),
+                                   helpText("Use the checkboxes to show or hide specific categories.")
+                            )
+                          )
+                        )
+                      ),
+                      fluidRow(
+                        box(
+                          title = "Monthly Frequency KPI",
+                          status = "primary",
+                          solidHeader = TRUE,
+                          width = 12,
+                          plotlyOutput("monthlyQualityMetrics", height = "450px")
+                        )
+                      )
+                    ) 
                   )
                 )
               )
@@ -602,399 +787,411 @@ ui <- dashboardPage(
                   )
                 )
               ),
-
-              # Filter Options
-              fluidRow(
-                box(
-                  title = "Filter by Date Range", status = "warning", solidHeader = TRUE, width = 12,
-                  # Add style to prevent clipping of date picker dropdown
-                  tags$style(HTML("
-                    .box-body { overflow: visible !important; }
-                    .datepicker { z-index: 9999 !important; }
-                  ")),
+              tabsetPanel(
+                id = "excursionTabs",
+                tabPanel(
+                  title = "Daily View",
+                  br(),
                   fluidRow(
-                    column(3,
-                           dateInput("excursionStartDate", "Start Date:",
-                                     value = as.Date("2025-01-01"),
-                                     min = as.Date("2025-01-01"),
-                                     max = as.Date("2025-09-30"))
-                    ),
-                    column(3,
-                           dateInput("excursionEndDate", "End Date:",
-                                     value = as.Date("2025-01-01"),
-                                     min = as.Date("2025-01-01"),
-                                     max = as.Date("2025-09-30"))
-                    ),
-                    column(3,
-                           br(),
-                           actionButton("updateExcursionPlots", "Update Plots",
-                                        class = "btn-primary",
-                                        style = "width: 100%;")
-                    ),
-                    column(3,
-                           br(),
-                           helpText("Select date range and click 'Update Plots' to refresh visualizations.")
+                    box(
+                      title = "Filter by Date Range", status = "warning", solidHeader = TRUE, width = 12,
+                      tags$style(HTML("
+                        .box-body { overflow: visible !important; }
+                        .datepicker { z-index: 9999 !important; }
+                      ")),
+                      fluidRow(
+                        column(3,
+                               dateInput("excursionStartDate", "Start Date:",
+                                         value = as.Date("2025-01-01"),
+                                         min = as.Date("2025-01-01"),
+                                         max = as.Date("2025-09-30"))
+                        ),
+                        column(3,
+                               dateInput("excursionEndDate", "End Date:",
+                                         value = as.Date("2025-01-01"),
+                                         min = as.Date("2025-01-01"),
+                                         max = as.Date("2025-09-30"))
+                        ),
+                        column(3,
+                               checkboxGroupInput(
+                                 "excursionThresholds",
+                                 "Thresholds (Hz):",
+                                 choices = c("0.10" = "0.1", "0.15" = "0.15", "0.20" = "0.2"),
+                                 selected = c("0.1", "0.15", "0.2")
+                               )
+                        ),
+                        column(3,
+                               br(),
+                               actionButton("updateExcursionPlots", "Update Plots",
+                                            class = "btn-primary",
+                                            style = "width: 100%;"),
+                               br(),
+                               helpText("Adjust date range or thresholds, then click 'Update Plots'.")
+                        )
+                      )
+                    )
+                  ),
+                  fluidRow(
+                    box(
+                      title = "Number of Excursions",
+                      status = "primary", solidHeader = TRUE, width = 12,
+                      plotlyOutput("excursionCountPlot", height = "450px")
+                    )
+                  ),
+                  fluidRow(
+                    box(
+                      title = "Total Duration of Excursions",
+                      status = "info", solidHeader = TRUE, width = 12,
+                      plotlyOutput("excursionDailyDurationPlot", height = "500px")
+                    )
+                  ),
+                  fluidRow(
+                    box(
+                      title = "Percentage of Time in Excursion",
+                      status = "warning", solidHeader = TRUE, width = 12,
+                      plotlyOutput("excursionPercentagePlot", height = "450px")
+                    )
+                  ),
+                  fluidRow(
+                    box(
+                      title = "Frequency Deviation by Settlement Period",
+                      status = "success", solidHeader = TRUE, width = 12,
+                      plotlyOutput("excursionSPDeviationPlot", height = "450px")
                     )
                   )
-                )
-              ),
-
-              # Plots
-              fluidRow(
-                box(
-                  title = "Number of Excursions",
-                  status = "primary", solidHeader = TRUE, width = 12,
-                  plotlyOutput("excursionCountPlot", height = "450px")
-                )
-              ),
-              fluidRow(
-                box(
-                  title = "Total Duration of Excursions",
-                  status = "info", solidHeader = TRUE, width = 12,
-                  plotlyOutput("excursionDailyDurationPlot", height = "500px")
-                )
-              ),
-              fluidRow(
-                box(
-                  title = "Percentage of Time in Excursion",
-                  status = "warning", solidHeader = TRUE, width = 12,
-                  plotlyOutput("excursionPercentagePlot", height = "450px")
-                )
-              ),
-              fluidRow(
-                box(
-                  title = "Frequency Deviation by Settlement Period",
-                  status = "success", solidHeader = TRUE, width = 12,
-                  plotlyOutput("excursionSPDeviationPlot", height = "450px")
+                ),
+                tabPanel(
+                  title = "Monthly",
+                  br(),
+                  fluidRow(
+                    box(
+                      title = "Monthly Excursion Filters",
+                      status = "warning",
+                      solidHeader = TRUE,
+                      width = 12,
+                      tags$style(HTML("
+                        .box-body { overflow: visible !important; }
+                        .datepicker { z-index: 9999 !important; }
+                      ")),
+                      fluidRow(
+                        column(3, uiOutput("excursionMonthlyStartUI")),
+                        column(3, uiOutput("excursionMonthlyEndUI")),
+                        column(4,
+                               checkboxGroupInput(
+                                 "excursionMonthlyThresholds",
+                                 "Thresholds (Hz):",
+                                 choices = c("0.10" = "0.1", "0.15" = "0.15", "0.20" = "0.2"),
+                                 selected = c("0.1", "0.15", "0.2"),
+                                 inline = TRUE
+                               )
+                        ),
+                        column(2,
+                               br(),
+                               actionButton(
+                                 "updateExcursionMonthly",
+                                 "Update Monthly Plots",
+                                 class = "btn-primary",
+                                 style = "width: 100%;"
+                               )
+                        )
+                      )
+                    )
+                  ),
+                  fluidRow(
+                    box(
+                      title = "Monthly Excursion Count",
+                      status = "primary",
+                      solidHeader = TRUE,
+                      width = 12,
+                      plotlyOutput("excursionMonthlyCountPlot", height = "420px")
+                    )
+                  ),
+                  fluidRow(
+                    column(
+                      width = 6,
+                      box(
+                        title = "Monthly Excursion Duration",
+                        status = "info",
+                        solidHeader = TRUE,
+                        width = NULL,
+                        plotlyOutput("excursionMonthlyDurationPlot", height = "420px")
+                      )
+                    ),
+                    column(
+                      width = 6,
+                      box(
+                        title = "Monthly Excursion Percentage",
+                        status = "success",
+                        solidHeader = TRUE,
+                        width = NULL,
+                        plotlyOutput("excursionMonthlyPercentagePlot", height = "420px")
+                      )
+                    )
+                  )
+                ),
+                tabPanel(
+                  title = "Weekly",
+                  br(),
+                  fluidRow(
+                    box(
+                      title = "Weekly Excursion Filters",
+                      status = "warning",
+                      solidHeader = TRUE,
+                      width = 12,
+                      tags$style(HTML("
+                        .box-body { overflow: visible !important; }
+                        .datepicker { z-index: 9999 !important; }
+                      ")),
+                      fluidRow(
+                        column(3, uiOutput("excursionWeeklyStartUI")),
+                        column(3, uiOutput("excursionWeeklyEndUI")),
+                        column(4,
+                               checkboxGroupInput(
+                                 "excursionWeeklyThresholds",
+                                 "Thresholds (Hz):",
+                                 choices = c("0.10" = "0.1", "0.15" = "0.15", "0.20" = "0.2"),
+                                 selected = c("0.1", "0.15", "0.2"),
+                                 inline = TRUE
+                               )
+                        ),
+                        column(2,
+                               br(),
+                               actionButton(
+                                 "updateExcursionWeekly",
+                                 "Update Weekly Plots",
+                                 class = "btn-primary",
+                                 style = "width: 100%;"
+                               )
+                        )
+                      )
+                    )
+                  ),
+                  fluidRow(
+                    box(
+                      title = "Weekly Excursion Count",
+                      status = "primary",
+                      solidHeader = TRUE,
+                      width = 12,
+                      plotlyOutput("excursionWeeklyCountPlot", height = "420px")
+                    )
+                  ),
+                  fluidRow(
+                    column(
+                      width = 6,
+                      box(
+                        title = "Weekly Excursion Duration",
+                        status = "info",
+                        solidHeader = TRUE,
+                        width = NULL,
+                        plotlyOutput("excursionWeeklyDurationPlot", height = "420px")
+                      )
+                    ),
+                    column(
+                      width = 6,
+                      box(
+                        title = "Weekly Excursion Percentage",
+                        status = "success",
+                        solidHeader = TRUE,
+                        width = NULL,
+                        plotlyOutput("excursionWeeklyPercentagePlot", height = "420px")
+                      )
+                    )
+                  )
                 )
               )
       ),
 
       # -- Response Holding Tab --
       tabItem(tabName = "response",
-              fluidRow(
-                box(
-                  title = "System Response Holding Analysis", status = "info", solidHeader = TRUE, width = 12,
-                  collapsible = TRUE, collapsed = TRUE,
-                  tags$div(
-                    style = "padding: 10px;",
-                    tags$p("This tab shows the system's response holding capacity combining:"),
-                    tags$ul(
-                      tags$li(strong("MFR (Mandatory Frequency Response):"), " P, S, and H components"),
-                      tags$li(strong("EAC (Enhanced Automatic Control):"), " Demand response products (DRL, DRH, DML, DMH, DCL, DCH)")
-                    ),
-                    tags$p(strong("SysDyn Calculations:")),
-                    tags$ul(
-                      tags$li("SysDyn_LP (Low Frequency) = P + 1.67 × (DRL + DML)"),
-                      tags$li("SysDyn_H (High Frequency) = H + 1.67 × (DRH + DMH)")
+              tabsetPanel(
+                id = "responseSubtab",
+                tabPanel(
+                  title = "Daily",
+                  value = "daily",
+                  fluidRow(
+                    box(
+                      title = "System Response Holding Analysis", status = "info", solidHeader = TRUE, width = 12,
+                      collapsible = TRUE, collapsed = TRUE,
+                      tags$div(
+                        style = "padding: 10px;",
+                        tags$p("This tab shows the system's response holding capacity combining:"),
+                        tags$ul(
+                          tags$li(strong("MFR (Mandatory Frequency Response):"), " P, S, and H components"),
+                          tags$li(strong("EAC (Enhanced Automatic Control):"), " Demand response products (DRL, DRH, DML, DMH, DCL, DCH)")
+                        ),
+                        tags$p(strong("SysDyn Calculations:")),
+                        tags$ul(
+                      tags$li("SysDyn_LP (Total Eq. Low Response) = P + 1.67 × (DRL + DML)"),
+                      tags$li("SysDyn_H (Total Eq. High Response) = H + 1.67 × (DRH + DMH)")
                     )
                   )
                 )
-              ),
+                  ),
 
-              # Filter Options
-              fluidRow(
-                box(
-                  title = "Filter by Date Range", status = "warning", solidHeader = TRUE, width = 12,
-                  # Add style to prevent clipping of date picker dropdown
-                  tags$style(HTML("
+                  # Filter Options
+                  fluidRow(
+                    box(
+                      title = "Filter by Date Range", status = "warning", solidHeader = TRUE, width = 12,
+                      # Add style to prevent clipping of date picker dropdown
+                      tags$style(HTML("
                     .box-body { overflow: visible !important; }
                     .datepicker { z-index: 9999 !important; }
                   ")),
-                  fluidRow(
-                    column(3,
-                           dateInput("responseStartDate", "Start Date:",
-                                     value = as.Date("2025-01-01"),
-                                     min = as.Date("2025-01-01"),
-                                     max = as.Date("2025-09-30"))
-                    ),
-                    column(3,
-                           dateInput("responseEndDate", "End Date:",
-                                     value = as.Date("2025-01-01"),
-                                     min = as.Date("2025-01-01"),
-                                     max = as.Date("2025-09-30"))
-                    ),
-                    column(3,
-                           br(),
-                           actionButton("updateResponsePlots", "Update Plots",
-                                        class = "btn-primary",
-                                        style = "width: 100%;")
-                    )
-                  )
-                )
-              ),
-
-              # Summary Statistics
-              fluidRow(
-                column(4,
-                       box(
-                         title = "MFR Average", status = "primary", solidHeader = TRUE, width = NULL,
-                         uiOutput("mfrSummaryUI")
-                       )
-                ),
-                column(4,
-                       box(
-                         title = "EAC Average", status = "success", solidHeader = TRUE, width = NULL,
-                         uiOutput("eacSummaryUI")
-                       )
-                ),
-                column(4,
-                       box(
-                         title = "SysDyn Average", status = "danger", solidHeader = TRUE, width = NULL,
-                         uiOutput("sysdynSummaryUI")
-                       )
-                )
-              ),
-
-              # Time Series Plots
-              fluidRow(
-                box(
-                  title = "System Response Time Series by Settlement Period",
-                  status = "primary", solidHeader = TRUE, width = 12,
-                  fluidRow(
-                    column(12,
-                           checkboxGroupInput("responseMetrics", "Select Metrics to Display:",
-                                              choices = c("SysDyn_LP" = "SysDyn_LP",
-                                                          "SysDyn_H" = "SysDyn_H",
-                                                          "P (Primary)" = "P",
-                                                          "S (Secondary)" = "S",
-                                                          "H (High)" = "H",
-                                                          "DRL (Demand Response Low)" = "DRL",
-                                                          "DRH (Demand Response High)" = "DRH",
-                                                          "DML (Demand Management Low)" = "DML",
-                                                          "DMH (Demand Management High)" = "DMH"),
-                                              selected = c("SysDyn_LP", "SysDyn_H"),
-                                              inline = TRUE)
+                      fluidRow(
+                        column(3,
+                               dateInput("responseStartDate", "Start Date:",
+                                         value = as.Date("2025-01-01"),
+                                         min = as.Date("2025-01-01"),
+                                         max = as.Date("2025-09-30"))
+                        ),
+                        column(3,
+                               dateInput("responseEndDate", "End Date:",
+                                         value = as.Date("2025-01-01"),
+                                         min = as.Date("2025-01-01"),
+                                         max = as.Date("2025-09-30"))
+                        ),
+                        column(3,
+                               br(),
+                               actionButton("updateResponsePlots", "Update Plots",
+                                            class = "btn-primary",
+                                            style = "width: 100%;")
+                        )
+                      )
                     )
                   ),
-                  plotlyOutput("responseTimeSeriesPlot", height = "500px")
-                )
-              ),
 
-              # Data Table
-              fluidRow(
-                box(
-                  title = "Response Holding Data", status = "info", solidHeader = TRUE, width = 12,
-                  DT::dataTableOutput("responseDataTable")
-                )
-              )
-      ),
-
-      # -- Unforeseen Demand Events Tab --
-      tabItem(tabName = "unforeseen",
-              # Subtabs for Event Analysis and Patterns
-              fluidRow(
-                box(
-                  title = NULL, status = "primary", solidHeader = FALSE, width = 12,
-                  tabsetPanel(
-                    id = "unforeseenTabs",
-                    # Subtab 1: Event Analysis
-                    tabPanel(
-                      title = "Event Analysis",
-                      value = "event_analysis",
-                      br(),
-                      fluidRow(
-                        column(12,
-                               box(
-                                 title = "Unforeseen Demand Change Analysis with Demand Damping Separation",
-                                 status = "info", solidHeader = TRUE, width = NULL,
-                                 collapsible = TRUE, collapsed = TRUE,
-                                 tags$div(
-                                   style = "padding: 10px;",
-                                   tags$p(strong("Business Context:")),
-                                   tags$p("Price signals cause coordinated demand changes at SP boundaries that NESO cannot anticipate. This analysis separates:"),
-                                   tags$ul(
-                                     tags$li(strong("Market-driven changes"), " (unforeseen - require extra reserve)"),
-                                     tags$li(strong("Natural damping response"), " (helpful - automatic stabilization)")
-                                   ),
-                                   tags$p(strong("Demand Damping:")),
-                                   tags$p("When frequency deviates, demand naturally responds (e.g., motors slow down when frequency drops). Formula: ΔMW_damping = Demand × 2.5% × |Δf| (NESO standard)"),
-                                   tags$p(strong("Unforeseen Component:")),
-                                   tags$p("ΔMW_unforeseen = ΔMW_total - ΔMW_damping"),
-                                   tags$p("Events are flagged as 'unforeseen' if they exceed 2.5 standard deviations from the hourly baseline.")
-                                 )
-                               )
-                        )
-                      ),
-                      # Filter Options
-                      fluidRow(
-                        column(12,
-                               box(
-                                 title = "Filter Options", status = "warning", solidHeader = TRUE, width = NULL,
-                                 # Add style to prevent clipping of date picker dropdown
-                                 tags$style(HTML("
-                                   .box-body { overflow: visible !important; }
-                                   .datepicker { z-index: 9999 !important; }
-                                 ")),
-                                 fluidRow(
-                                   column(3,
-                                          selectInput("unforeseenMetric", "Demand Metric:",
-                                                      choices = c("ND" = "ND",
-                                                                  "TSD" = "TSD",
-                                                                  "England & Wales" = "ENGLAND_WALES_DEMAND"),
-                                                      selected = "ND")
-                                   ),
-                                   column(3,
-                                          selectInput("unforeseenFilter", "Event Filter:",
-                                                      choices = c("All Events" = "all",
-                                                                  "Unforeseen Only" = "unforeseen",
-                                                                  "Normal Only" = "normal"),
-                                                      selected = "unforeseen")
-                                   ),
-                                   column(3,
-                                          dateInput("unforeseenStartDate", "Start Date:",
-                                                    value = as.Date("2025-01-01"),
-                                                    min = as.Date("2025-01-01"),
-                                                    max = as.Date("2025-09-30"))
-                                   ),
-                                   column(3,
-                                          dateInput("unforeseenEndDate", "End Date:",
-                                                    value = as.Date("2025-01-01"),
-                                                    min = as.Date("2025-01-01"),
-                                                    max = as.Date("2025-09-30"))
-                                   )
-                                 )
-                               )
-                        )
-                      ),
-                      # Time Series Plot
-                      fluidRow(
-                        column(12,
-                               box(
-                                 title = "Demand Changes Over Time (with Damping Separation)",
-                                 status = "primary", solidHeader = TRUE, width = NULL,
-                                 plotlyOutput("unforeseenTimeSeriesPlot", height = "500px")
-                               )
-                        )
-                      ),
-                      # SP Frequency Event Categories
-                      fluidRow(
-                        column(12,
-                               box(
-                                 title = "SP Frequency Event Categories",
-                                 status = "warning", solidHeader = TRUE, width = NULL,
-                                 plotlyOutput("unforeseenVsFreqCategoryPlot", height = "400px")
-                               )
-                        )
-                      ),
-                      # Frequency Profile Plot
-                      fluidRow(
-                        column(12,
-                               box(
-                                 title = "Frequency Profile for Selected Day",
-                                 status = "info", solidHeader = TRUE, width = NULL,
-                                 plotlyOutput("unforeseenFrequencyProfilePlot", height = "400px")
-                               )
-                        )
-                      ),
-                      # Data Table
-                      fluidRow(
-                        column(12,
-                               box(
-                                 title = "Unforeseen Demand Events Details", status = "info", solidHeader = TRUE, width = NULL,
-                                 DT::dataTableOutput("unforeseenDataTable")
-                               )
-                        )
-                      )
+                  # Summary Statistics
+                  fluidRow(
+                    column(4,
+                           box(
+                             title = "MFR Average", status = "primary", solidHeader = TRUE, width = NULL,
+                             uiOutput("mfrSummaryUI")
+                           )
                     ),
-                    # Subtab 2: Patterns
-                    tabPanel(
-                      title = "Patterns",
-                      value = "patterns",
-                      br(),
+                    column(4,
+                           box(
+                             title = "EAC Average", status = "success", solidHeader = TRUE, width = NULL,
+                             uiOutput("eacSummaryUI")
+                           )
+                    ),
+                    column(4,
+                           box(
+                             title = "SysDyn Average", status = "danger", solidHeader = TRUE, width = NULL,
+                             uiOutput("sysdynSummaryUI")
+                           )
+                    )
+                  ),
+
+                  # Time Series Plots
+                  fluidRow(
+                    box(
+                      title = "System Response Time Series by Settlement Period",
+                      status = "primary", solidHeader = TRUE, width = 12,
                       fluidRow(
                         column(12,
-                               box(
-                                 title = "Unforeseen Demand Patterns Analysis",
-                                 status = "info", solidHeader = TRUE, width = NULL,
-                                 collapsible = TRUE, collapsed = TRUE,
-                                 tags$div(
-                                   style = "padding: 10px;",
-                                   tags$p(strong("Purpose:")),
-                                   tags$p("Identify temporal patterns in unforeseen demand events to understand which hours, days, and periods are most problematic."),
-                                   tags$p(strong("Key Insights:")),
-                                   tags$ul(
-                                     tags$li("Which hours consistently have more unforeseen events?"),
-                                     tags$li("How do events distribute across days/weeks/months?"),
-                                     tags$li("Are there trending patterns over time?")
-                                   )
-                                 )
-                               )
+                               checkboxGroupInput("responseMetrics", "Select Metrics to Display:",
+                                                  choices = c("SysDyn_LP (Total Eq. Low Response)" = "SysDyn_LP",
+                                                              "SysDyn_H (Total Eq. High Response)" = "SysDyn_H",
+                                                              "P (Primary)" = "P",
+                                                              "S (Secondary)" = "S",
+                                                              "H (High)" = "H",
+                                                              "DRL (Demand Response Low)" = "DRL",
+                                                              "DRH (Demand Response High)" = "DRH",
+                                                              "DML (Demand Management Low)" = "DML",
+                                                              "DMH (Demand Management High)" = "DMH"),
+                                                  selected = c("SysDyn_LP", "SysDyn_H"),
+                                                  inline = TRUE)
                         )
                       ),
-                      # Date Range Filter
+                      plotlyOutput("responseTimeSeriesPlot", height = "500px")
+                    )
+                  ),
+
+                  # Data Table
+                  fluidRow(
+                    box(
+                      title = "Response Holding Data", status = "info", solidHeader = TRUE, width = 12,
+                      DT::dataTableOutput("responseDataTable")
+                    )
+                  )
+                ),
+                tabPanel(
+                  title = "Monthly",
+                  value = "monthly",
+                  br(),
+                  fluidRow(
+                    box(
+                      title = "Monthly Response Holding Overview",
+                      status = "primary",
+                      solidHeader = TRUE,
+                      width = 12,
                       fluidRow(
-                        column(12,
-                               box(
-                                 title = "Filter by Date Range", status = "warning", solidHeader = TRUE, width = NULL,
-                                 fluidRow(
-                                   column(3,
-                                          dateInput("patternsStartDate", "Start Date:",
-                                                    value = as.Date("2025-01-01"),
-                                                    min = as.Date("2025-01-01"),
-                                                    max = as.Date("2025-09-30"))
-                                   ),
-                                   column(3,
-                                          dateInput("patternsEndDate", "End Date:",
-                                                    value = as.Date("2025-01-01"),
-                                                    min = as.Date("2025-01-01"),
-                                                    max = as.Date("2025-09-30"))
-                                   ),
-                                   column(3,
-                                          selectInput("patternsMetric", "Demand Metric:",
-                                                      choices = c("ND", "TSD", "ENGLAND_WALES_DEMAND"),
-                                                      selected = "ND")
-                                   ),
-                                   column(3,
-                                          br(),
-                                          actionButton("updatePatternsPlots", "Update Plots",
-                                                       class = "btn-primary",
-                                                       style = "width: 100%;")
-                                   )
-                                 )
-                               )
+                        column(6, uiOutput("responseMonthlyStartUI")),
+                        column(6, uiOutput("responseMonthlyEndUI"))
+                      ),
+                      fluidRow(
+                        column(
+                          width = 12,
+                          checkboxGroupInput(
+                            "responseMonthlyMetrics",
+                            "Select Metrics to Display:",
+                            choices = c(
+                              "SysDyn_LP (Total Eq. Low Response)" = "SysDyn_LP",
+                              "SysDyn_H (Total Eq. High Response)" = "SysDyn_H",
+                              "P (Primary)" = "P",
+                              "S (Secondary)" = "S",
+                              "H (High)" = "H",
+                              "DRL (Demand Response Low)" = "DRL",
+                              "DRH (Demand Response High)" = "DRH",
+                              "DML (Demand Management Low)" = "DML",
+                              "DMH (Demand Management High)" = "DMH"
+                            ),
+                            selected = c("SysDyn_LP", "SysDyn_H"),
+                            inline = TRUE
+                          )
                         )
                       ),
-                      # Panel 1: Aggregated Bar Chart - Events per Hour
+                      plotlyOutput("responseMonthlyPlot", height = "450px")
+                    )
+                  )
+                ),
+                tabPanel(
+                  title = "Weekly",
+                  value = "weekly",
+                  br(),
+                  fluidRow(
+                    box(
+                      title = "Weekly Response Holding Overview",
+                      status = "primary",
+                      solidHeader = TRUE,
+                      width = 12,
                       fluidRow(
-                        column(12,
-                               box(
-                                 title = "Total Unforeseen Events by Hour of Day",
-                                 status = "primary", solidHeader = TRUE, width = NULL,
-                                 plotlyOutput("patternsHourlyBarPlot", height = "400px")
-                               )
+                        column(6, uiOutput("responseWeeklyStartUI")),
+                        column(6, uiOutput("responseWeeklyEndUI"))
+                      ),
+                      fluidRow(
+                        column(
+                          width = 12,
+                          checkboxGroupInput(
+                            "responseWeeklyMetrics",
+                            "Select Metrics to Display:",
+                            choices = c(
+                              "SysDyn_LP (Total Eq. Low Response)" = "SysDyn_LP",
+                              "SysDyn_H (Total Eq. High Response)" = "SysDyn_H",
+                              "P (Primary)" = "P",
+                              "S (Secondary)" = "S",
+                              "H (High)" = "H",
+                              "DRL (Demand Response Low)" = "DRL",
+                              "DRH (Demand Response High)" = "DRH",
+                              "DML (Demand Management Low)" = "DML",
+                              "DMH (Demand Management High)" = "DMH"
+                            ),
+                            selected = c("SysDyn_LP", "SysDyn_H"),
+                            inline = TRUE
+                          )
                         )
                       ),
-                      # Panel 2: Heatmap - Events by Hour and Date
-                      fluidRow(
-                        column(12,
-                               box(
-                                 title = "Unforeseen Events Heatmap (Hour × Date)",
-                                 status = "info", solidHeader = TRUE, width = NULL,
-                                 plotlyOutput("patternsHeatmapPlot", height = "500px")
-                               )
-                        )
-                      ),
-                      # Panel 3: Time Series with Hour Filter
-                      fluidRow(
-                        column(12,
-                               box(
-                                 title = "Daily Event Count Time Series",
-                                 status = "success", solidHeader = TRUE, width = NULL,
-                                 fluidRow(
-                                   column(3,
-                                          selectInput("patternsHourFilter", "Filter by Hour:",
-                                                      choices = c("All Hours" = "all", as.character(0:23)),
-                                                      selected = "all")
-                                   ),
-                                   column(9,
-                                          helpText("Select a specific hour to see trends for that hour only, or 'All Hours' to see total daily counts.")
-                                   )
-                                 ),
-                                 plotlyOutput("patternsTimeSeriesPlot", height = "400px")
-                               )
-                        )
-                      )
+                      plotlyOutput("responseWeeklyPlot", height = "450px")
                     )
                   )
                 )
@@ -1037,15 +1234,6 @@ ui <- dashboardPage(
                 )
               ),
 
-              # Panel 1: Monthly Quality Metrics Time Series
-              fluidRow(
-                box(
-                  title = "Panel 1: Monthly Frequency KPI",
-                  status = "danger", solidHeader = TRUE, width = 12,
-                  plotlyOutput("monthlyQualityMetrics", height = "450px")
-                )
-              ),
-
               # Panel 2: Monthly Red Ratio Trend
               fluidRow(
                 box(
@@ -1056,14 +1244,6 @@ ui <- dashboardPage(
               ),
 
               # Panel 3: Monthly Excursion Percentage
-              fluidRow(
-                box(
-                  title = "Panel 3: Monthly Excursion Percentage (0.15 Hz threshold)",
-                  status = "primary", solidHeader = TRUE, width = 12,
-                  plotlyOutput("monthlyDemand", height = "450px")
-                )
-              ),
-
               # Panel 4: Monthly Demand Change Analysis
               fluidRow(
                 box(
@@ -1094,6 +1274,56 @@ server <- function(input, output, session) {
   eventData <- reactive({
     fread("data/output/reports/sp_boundary_events.csv")
   })
+
+
+  demandErrorData <- reactive({
+    path <- "data/output/reports/red_event_demand.csv"
+    if (!file.exists(path)) return(data.table())
+    dt <- tryCatch(fread(path), error = function(e) data.table())
+    if (!nrow(dt)) return(data.table())
+    if ("Date" %in% names(dt)) {
+      dt[, Date := as.Date(Date)]
+    }
+    if ("Datetime" %in% names(dt)) {
+      dt[, Datetime := suppressWarnings(as.POSIXct(Datetime, tz = "UTC"))]
+    }
+    if ("Settlement_Period" %in% names(dt)) {
+      dt[, Settlement_Period := as.integer(Settlement_Period)]
+    }
+    if ("Absolute_Error" %in% names(dt)) {
+      dt[, Absolute_Error := as.numeric(Absolute_Error)]
+    } else {
+      dt[, Absolute_Error := NA_real_]
+    }
+    dt
+  })
+
+
+  # Reactive expression to load REMIT unplanned trip data
+  remitTripData <- reactive({
+    path <- "data/output/reports/red_events_remit_matches.csv"
+    if (!file.exists(path)) return(data.table())
+    dt <- tryCatch(fread(path), error = function(e) data.table())
+    if (!nrow(dt)) return(data.table())
+
+    parse_time <- function(x) suppressWarnings(as.POSIXct(x, tz = "UTC"))
+    time_cols <- intersect(c("event_start_time", "publish_time"), names(dt))
+    for (col in time_cols) {
+      dt[, (col) := parse_time(get(col))]
+    }
+    if (!"event_start_time" %in% names(dt)) {
+      return(data.table())
+    }
+    dt[is.na(event_start_time) & "publish_time" %in% names(dt),
+       event_start_time := publish_time]
+    dt <- dt[!is.na(event_start_time)]
+    if (!"unavailability_type" %in% names(dt)) return(data.table())
+    dt <- dt[tolower(unavailability_type) == "unplanned"]
+    if (!nrow(dt)) return(data.table())
+    dt[, event_date := as.Date(event_start_time)]
+    dt <- dt[!is.na(event_date)]
+    dt
+  })
   
   # Reactive expression to load monthly summary data
   monthlyData <- reactive({
@@ -1119,6 +1349,38 @@ server <- function(input, output, session) {
     dt[, date := as.Date(date)]
     return(dt)
   })
+
+  excursion_threshold_colors <- c("0.1" = "#ff7f0e",
+                                  "0.15" = "#2ca02c",
+                                  "0.2" = "#1f77b4")
+
+  selectedExcursionThresholds <- reactive({
+    thr_input <- input$excursionThresholds
+    if (is.null(thr_input)) return(numeric())
+    thr <- sort(unique(as.numeric(thr_input)))
+    thr[!is.na(thr)]
+  })
+
+  getExcursionColor <- function(threshold) {
+    col <- excursion_threshold_colors[as.character(threshold)]
+    if (is.null(col) || is.na(col)) "#999999" else col
+  }
+
+  excursionEmptyPlot <- function(message, x_title = NULL, y_title = NULL) {
+    plotly_empty(type = "scatter", mode = "text") %>%
+      layout(
+        annotations = list(
+          list(
+            text = message,
+            showarrow = FALSE,
+            x = 0.5, y = 0.5,
+            xref = "paper", yref = "paper"
+          )
+        ),
+        xaxis = list(title = x_title),
+        yaxis = list(title = y_title)
+      )
+  }
 
   # Reactive values for synchronized zooming
   plot_zoom <- reactiveValues(
@@ -1177,6 +1439,132 @@ server <- function(input, output, session) {
                 value = max_date,
                 min = min_date,
                 max = max_date)
+    )
+  })
+
+  output$kpiMonthlyDateRangeUI <- renderUI({
+    df <- kpiData()
+    if (nrow(df) == 0) {
+      return(tags$p("No KPI data available", style = "color: #999; font-style: italic;"))
+    }
+    min_date <- suppressWarnings(lubridate::floor_date(min(df$date, na.rm = TRUE), unit = "month"))
+    max_date <- suppressWarnings(lubridate::floor_date(max(df$date, na.rm = TRUE), unit = "month"))
+    if (is.infinite(min_date) || is.na(min_date) || is.infinite(max_date) || is.na(max_date)) {
+      return(tags$p("No KPI data available", style = "color: #999; font-style: italic;"))
+    }
+    tagList(
+      dateInput("kpiMonthlyStartDate", "Start Month:",
+                value = min_date,
+                min = min_date,
+                max = max_date,
+                startview = "month",
+                format = "yyyy-mm"),
+      br(),
+      dateInput("kpiMonthlyEndDate", "End Month:",
+                value = max_date,
+                min = min_date,
+                max = max_date,
+                startview = "month",
+                format = "yyyy-mm")
+    )
+  })
+
+  output$kpiWeeklyDateRangeUI <- renderUI({
+    df <- kpiData()
+    if (nrow(df) == 0) {
+      return(tags$p("No KPI data available", style = "color: #999; font-style: italic;"))
+    }
+    min_week <- suppressWarnings(lubridate::floor_date(min(df$date, na.rm = TRUE), unit = "week", week_start = 1))
+    max_week <- suppressWarnings(lubridate::floor_date(max(df$date, na.rm = TRUE), unit = "week", week_start = 1))
+    if (is.na(min_week) || is.na(max_week) || is.infinite(min_week) || is.infinite(max_week)) {
+      return(tags$p("No KPI data available", style = "color: #999; font-style: italic;"))
+    }
+    tagList(
+      dateInput("kpiWeeklyStartDate", "Start Week:",
+                value = min_week,
+                min = min_week,
+                max = max_week,
+                startview = "month",
+                format = "yyyy-mm-dd"),
+      br(),
+      dateInput("kpiWeeklyEndDate", "End Week:",
+                value = max_week,
+                min = min_week,
+                max = max_week,
+                startview = "month",
+                format = "yyyy-mm-dd")
+    )
+  })
+
+  output$excursionMonthlyStartUI <- renderUI({
+    df <- monthlyExcursionData()
+    if (nrow(df) == 0) {
+      return(tags$p("No excursion data available", style = "color: #999; font-style: italic;"))
+    }
+    min_month <- min(df$month, na.rm = TRUE)
+    max_month <- max(df$month, na.rm = TRUE)
+    dateInput(
+      "excursionMonthlyStart",
+      "Start Month:",
+      value = min_month,
+      min = min_month,
+      max = max_month,
+      startview = "month",
+      format = "yyyy-mm"
+    )
+  })
+
+  output$excursionMonthlyEndUI <- renderUI({
+    df <- monthlyExcursionData()
+    if (nrow(df) == 0) {
+      return(tags$p("No excursion data available", style = "color: #999; font-style: italic;"))
+    }
+    min_month <- min(df$month, na.rm = TRUE)
+    max_month <- max(df$month, na.rm = TRUE)
+    dateInput(
+      "excursionMonthlyEnd",
+      "End Month:",
+      value = max_month,
+      min = min_month,
+      max = max_month,
+      startview = "month",
+      format = "yyyy-mm"
+    )
+  })
+
+  output$excursionWeeklyStartUI <- renderUI({
+    df <- excursionDailyData()
+    if (nrow(df) == 0) {
+      return(tags$p("No excursion data available", style = "color: #999; font-style: italic;"))
+    }
+    min_week <- suppressWarnings(lubridate::floor_date(min(df$date, na.rm = TRUE), unit = "week", week_start = 1))
+    max_week <- suppressWarnings(lubridate::floor_date(max(df$date, na.rm = TRUE), unit = "week", week_start = 1))
+    dateInput(
+      "excursionWeeklyStart",
+      "Start Week:",
+      value = min_week,
+      min = min_week,
+      max = max_week,
+      startview = "month",
+      format = "yyyy-mm-dd"
+    )
+  })
+
+  output$excursionWeeklyEndUI <- renderUI({
+    df <- excursionDailyData()
+    if (nrow(df) == 0) {
+      return(tags$p("No excursion data available", style = "color: #999; font-style: italic;"))
+    }
+    min_week <- suppressWarnings(lubridate::floor_date(min(df$date, na.rm = TRUE), unit = "week", week_start = 1))
+    max_week <- suppressWarnings(lubridate::floor_date(max(df$date, na.rm = TRUE), unit = "week", week_start = 1))
+    dateInput(
+      "excursionWeeklyEnd",
+      "End Week:",
+      value = max_week,
+      min = min_week,
+      max = max_week,
+      startview = "month",
+      format = "yyyy-mm-dd"
     )
   })
 
@@ -1291,50 +1679,26 @@ server <- function(input, output, session) {
   filteredOverviewData <- eventReactive(input$updateOverview, {
     req(input$overviewFilterMode)
 
-    # Get event, KPI, and unforeseen data
     event_df <- eventData()
     kpi_df <- kpiData()
-
-    # Get unforeseen data if available
-    unforeseen_df <- tryCatch({
-      unforeseenData()
-    }, error = function(e) {
-      data.table()
-    })
 
     if (input$overviewFilterMode == "date_range") {
       req(input$overviewStartDate, input$overviewEndDate)
       event_filtered <- event_df[as.Date(date) >= input$overviewStartDate & as.Date(date) <= input$overviewEndDate]
       kpi_filtered <- kpi_df[date >= input$overviewStartDate & date <= input$overviewEndDate]
-
-      if (nrow(unforeseen_df) > 0) {
-        unforeseen_filtered <- unforeseen_df[Date >= input$overviewStartDate & Date <= input$overviewEndDate]
-      } else {
-        unforeseen_filtered <- data.table()
-      }
     } else if (input$overviewFilterMode == "month") {
       req(input$overviewMonthFilter)
       kpi_df[, month_label := format(date, "%b %Y")]
       kpi_filtered <- kpi_df[month_label == input$overviewMonthFilter]
 
-      # For events, filter by the same month
       event_df[, month_label := format(date, "%b %Y")]
       event_filtered <- event_df[month_label == input$overviewMonthFilter]
-
-      # For unforeseen, filter by the same month
-      if (nrow(unforeseen_df) > 0) {
-        unforeseen_df[, month_label := format(Date, "%b %Y")]
-        unforeseen_filtered <- unforeseen_df[month_label == input$overviewMonthFilter]
-        unforeseen_filtered[, month_label := NULL]
-      } else {
-        unforeseen_filtered <- data.table()
-      }
 
       kpi_filtered[, month_label := NULL]
       event_filtered[, month_label := NULL]
     }
 
-    list(events = event_filtered, kpi = kpi_filtered, unforeseen = unforeseen_filtered)
+    list(events = event_filtered, kpi = kpi_filtered)
   }, ignoreNULL = FALSE)
 
   # Event Detection Summary
@@ -1434,54 +1798,6 @@ server <- function(input, output, session) {
     )
   })
 
-  # Unforeseen Demand Events Summary
-  output$unforeseenSummaryUI <- renderUI({
-    data <- filteredOverviewData()
-    df <- data$unforeseen
-
-    if (nrow(df) == 0) {
-      return(tags$p("No unforeseen demand data available for selected period.", style = "color: #999; font-style: italic;"))
-    }
-
-    # Calculate statistics
-    total_boundaries <- nrow(df)
-
-    # Count unforeseen events by metric
-    nd_unforeseen <- sum(df$is_unforeseen_ND, na.rm = TRUE)
-    tsd_unforeseen <- sum(df$is_unforeseen_TSD, na.rm = TRUE)
-
-    # Total unique unforeseen events (any metric flagged)
-    total_unforeseen <- sum(df$is_unforeseen_ND | df$is_unforeseen_TSD | df$is_unforeseen_ENGLAND_WALES_DEMAND, na.rm = TRUE)
-    unforeseen_pct <- (total_unforeseen / total_boundaries) * 100
-
-    tags$div(
-      style = "padding: 10px;",
-      tags$table(
-        style = "width: 100%; border-collapse: collapse;",
-        tags$tr(
-          tags$td(style = "padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd;", "SP Boundaries:"),
-          tags$td(style = "padding: 8px; text-align: right; border-bottom: 1px solid #ddd;", format(total_boundaries, big.mark = ","))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 8px; font-weight: bold;", "Total Unforeseen Events:"),
-          tags$td(style = "padding: 8px; text-align: right;",
-                  HTML(paste0(format(total_unforeseen, big.mark = ","), " (", sprintf("%.1f%%", unforeseen_pct), ")")))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 8px; font-weight: bold; border-bottom: 1px solid #ddd; padding-top: 12px;", colspan = "2", "Events by Metric:")
-        ),
-        tags$tr(
-          tags$td(style = "padding: 8px; padding-left: 20px;", "ND:"),
-          tags$td(style = "padding: 8px; text-align: right;", format(nd_unforeseen, big.mark = ","))
-        ),
-        tags$tr(
-          tags$td(style = "padding: 8px; padding-left: 20px;", "TSD:"),
-          tags$td(style = "padding: 8px; text-align: right;", format(tsd_unforeseen, big.mark = ","))
-        )
-      )
-    )
-  })
-
   # --- Event Explorer Tab Logic ---
   filteredEvents <- reactive({
     df <- eventData()
@@ -1499,149 +1815,641 @@ server <- function(input, output, session) {
   })
   
   output$eventsTable <- DT::renderDataTable({
-    datatable(filteredEvents(),
+    df <- filteredEvents()
+    display_cols <- c("date", "starting_sp", "boundary_time",
+                      "min_f", "max_f", "abs_freq_change", "rocof_p99",
+                      "imbalance_mw", "trend", "event_timing",
+                      "category", "severity")
+    available_cols <- intersect(display_cols, names(df))
+    datatable(df[, ..available_cols],
               options = list(pageLength = 10, scrollX = TRUE),
               rownames = FALSE,
               filter = 'top')
   })
 
-  # --- Event Plots Logic ---
-
-  # Select events for plotting based on user inputs
-  selectedEventsForPlots <- eventReactive(input$updateEventPlots, {
-    req(input$plotStrategy, input$plotSortBy)
-
-    # Get Red events only (like the verification plots function)
+  # --- Events Analysis (Red events aggregation) ---
+  eventRedData <- reactive({
     df <- eventData()
-    red_events <- df[category == "Red"]
-
-    if (nrow(red_events) == 0) {
-      return(data.table())
-    }
-
-    # Apply sorting based on sort_by parameter
-    if (input$plotSortBy == "severity") {
-      setorder(red_events, -severity)
-    } else if (input$plotSortBy == "abs_freq_change") {
-      setorder(red_events, -abs_freq_change)
-    } else if (input$plotSortBy == "rocof_p99") {
-      setorder(red_events, -rocof_p99)
-    } else if (input$plotSortBy == "chronological") {
-      setorder(red_events, date, starting_sp)
-    }
-
-    # Apply selection strategy
-    selected_events <- if (input$plotStrategy == "all") {
-      red_events
-    } else if (input$plotStrategy == "top_N") {
-      head(red_events, input$plotCount)
-    } else if (input$plotStrategy == "worst_N") {
-      setorder(red_events, -severity)
-      head(red_events, input$plotCount)
-    } else if (input$plotStrategy == "best_N") {
-      setorder(red_events, severity)
-      head(red_events, input$plotCount)
-    } else if (input$plotStrategy == "random_N") {
-      if (nrow(red_events) <= input$plotCount) {
-        red_events
-      } else {
-        sample_indices <- sample(nrow(red_events), input$plotCount)
-        red_events[sample_indices]
-      }
+    if (!"category" %in% names(df)) return(data.table())
+    df <- df[category == "Red"]
+    if (!nrow(df)) return(df)
+    df[, date := as.Date(date)]
+    df[, week_start := floor_date(date, "week", week_start = 1)]
+    df[, month_label := format(date, "%Y-%m")]
+    df[, month_date := as.Date(paste0(month_label, "-01"))]
+    if (!"imbalance_mw" %in% names(df)) {
+      df[, imbalance_mw := NA_real_]
     } else {
-      head(red_events, input$plotCount)
+      df[, imbalance_mw := as.numeric(imbalance_mw)]
     }
-
-    return(selected_events)
-  }, ignoreNULL = FALSE)
-
-  # Generate plots gallery UI
-  output$eventPlotsGalleryUI <- renderUI({
-    events <- selectedEventsForPlots()
-
-    if (is.null(events) || nrow(events) == 0) {
-      return(div(
-        style = "text-align: center; margin: 50px;",
-        h4("No Red events available", style = "color: #666;"),
-        p("Either no Red events exist in the data, or plots haven't been generated yet."),
-        p("Run the analysis pipeline to generate verification plots.")
-      ))
-    }
-
-    # Create plot elements
-    plot_ui_elements <- list()
-    verification_dir <- "data/verification"
-
-    for (i in seq_len(nrow(events))) {
-      event <- events[i]
-
-      # Create plot filename (matching the format from generate_verification_plots)
-      # Note: boundary_time in CSV is UTC, but plots are saved with local time
-      boundary_dt <- as.POSIXct(event$boundary_time, tz = "UTC")
-      # Convert to local time (system timezone) to match plot filenames
-      boundary_local <- format(boundary_dt, "%Y%m%d_%H%M", tz = Sys.timezone())
-      plot_tag <- paste0(boundary_local, "_SP", event$starting_sp)
-      plot_filename <- paste0("red_event_", plot_tag, ".png")
-      plot_path <- file.path(verification_dir, plot_filename)
-
-      # Create event title with metrics (using local time to match plot)
-      event_title <- paste0(
-        "Event #", i, ": ",
-        format(boundary_dt, "%Y-%m-%d %H:%M", tz = Sys.timezone()),
-        " (SP ", event$starting_sp, ")"
-      )
-
-      event_metrics <- paste0(
-        "Δf = ", sprintf("%.3f", event$abs_freq_change), " Hz  |  ",
-        "p99|ROCOF| = ", sprintf("%.6f", event$rocof_p99), " Hz/s  |  ",
-        "Trend: ", event$trend, "  |  ",
-        "Severity: ", sprintf("%.2f", event$severity)
-      )
-
-      if (file.exists(plot_path)) {
-        # Plot exists - display it
-        plot_ui_elements[[i]] <- div(
-          style = "margin-bottom: 30px; border: 2px solid #ddd; border-radius: 5px; padding: 15px; background-color: #f9f9f9;",
-          h4(event_title, style = "margin-top: 0; color: #d62728;"),
-          p(event_metrics, style = "font-size: 13px; color: #555; font-family: monospace;"),
-          tags$img(src = paste0("verification_plots/", plot_filename),
-                  width = "100%",
-                  style = "border: 1px solid #ccc; border-radius: 3px;")
-        )
-      } else {
-        # Plot doesn't exist - show message
-        plot_ui_elements[[i]] <- div(
-          style = "margin-bottom: 20px; border: 2px solid #f0ad4e; border-radius: 5px; padding: 15px; background-color: #fcf8e3;",
-          h4(event_title, style = "margin-top: 0; color: #8a6d3b;"),
-          p(event_metrics, style = "font-size: 13px; color: #555; font-family: monospace;"),
-          div(
-            style = "text-align: center; padding: 20px;",
-            icon("exclamation-triangle", class = "fa-2x", style = "color: #f0ad4e;"),
-            p(strong("Plot not found"), style = "margin-top: 10px; color: #8a6d3b;"),
-            p(paste("Expected file:", plot_filename), style = "font-size: 11px; color: #999;")
-          )
-        )
-      }
-    }
-
-    if (length(plot_ui_elements) == 0) {
-      return(div(
-        style = "text-align: center; margin: 50px;",
-        h4("No plots selected", style = "color: #666;"),
-        p("Adjust your selection criteria and click 'Load Plots'.")
-      ))
-    }
-
-    # Add summary at the top
-    summary_box <- div(
-      style = "padding: 15px; background-color: #d9edf7; border: 1px solid #bce8f1; border-radius: 4px; margin-bottom: 20px;",
-      strong(icon("info-circle"), " Summary:"),
-      " Displaying ", strong(length(plot_ui_elements)), " verification plots",
-      " (Strategy: ", strong(input$plotStrategy), ", Sort by: ", strong(input$plotSortBy), ")"
-    )
-
-    do.call(tagList, c(list(summary_box), plot_ui_elements))
+    setorder(df, date, starting_sp)
+    df
   })
+
+  safe_stat <- function(x, fun) {
+    if (length(x) == 0 || all(is.na(x))) return(NA_real_)
+    fun(x, na.rm = TRUE)
+  }
+
+  complete_sp_counts <- function(dt) {
+    full_sp <- data.table(starting_sp = 1:48)
+    merged <- merge(full_sp, dt, by = "starting_sp", all.x = TRUE)
+    merged[is.na(event_count), event_count := 0]
+    merged
+  }
+
+  monthlySummaryData <- reactive({
+    df <- eventRedData()
+    if (nrow(df) == 0) return(data.table())
+    summary <- df[, .(
+      event_count = .N,
+      mean_severity = safe_stat(severity, mean),
+      mean_imbalance = safe_stat(abs(imbalance_mw), mean),
+      mean_positive_imbalance = safe_stat(imbalance_mw[imbalance_mw > 0], mean),
+      mean_negative_imbalance = safe_stat(imbalance_mw[imbalance_mw < 0], mean),
+      abs_freq_change_avg = safe_stat(abs_freq_change, mean),
+      rocof_p99_avg = safe_stat(rocof_p99, mean)
+    ), by = .(month_label, month_date)]
+    if (nrow(summary) == 0) return(summary)
+    setorder(summary, month_date)
+    summary[, cumulative_count := cumsum(event_count)]
+    summary[, month_label := factor(month_label, levels = unique(month_label))]
+    summary
+  })
+
+  eventAnalysisNav <- reactiveValues(
+    daily_idx = 0L,
+    weekly_idx = 0L,
+    monthly_idx = 0L
+  )
+
+  availableDailyDates <- reactive({
+    df <- eventRedData()
+    if (nrow(df) == 0) return(as.Date(character()))
+    sort(unique(df$date))
+  })
+
+  availableWeeklyStarts <- reactive({
+    df <- eventRedData()
+    if (nrow(df) == 0) return(as.Date(character()))
+    sort(unique(df$week_start))
+  })
+
+  formatWeekLabel <- function(week_start) {
+    paste0("W", format(week_start, "%V"), " ", format(week_start, "%d %b"))
+  }
+
+
+  availableMonthlyLabels <- reactive({
+    df <- eventRedData()
+    if (nrow(df) == 0) return(character())
+    sort(unique(df$month_label))
+  })
+
+  observeEvent(availableDailyDates(), {
+    dates <- availableDailyDates()
+    eventAnalysisNav$daily_idx <- if (length(dates) == 0) 0L else length(dates)
+  })
+
+  observeEvent(availableWeeklyStarts(), {
+    weeks <- availableWeeklyStarts()
+    if (length(weeks) == 0) return()
+    eventAnalysisNav$weekly_idx <- length(weeks)
+
+    week_choices <- setNames(as.character(weeks), formatWeekLabel(weeks))
+    start_selected <- input$eventWeeklyRangeStart
+    end_selected <- input$eventWeeklyRangeEnd
+    if (is.null(start_selected) || !(start_selected %in% as.character(weeks))) {
+      start_selected <- as.character(min(weeks))
+    }
+    if (is.null(end_selected) || !(end_selected %in% as.character(weeks))) {
+      end_selected <- as.character(max(weeks))
+    }
+    if (as.Date(start_selected) > as.Date(end_selected)) {
+      end_selected <- start_selected
+    }
+    updateSelectInput(session, "eventWeeklyRangeStart",
+                      choices = week_choices,
+                      selected = start_selected)
+    updateSelectInput(session, "eventWeeklyRangeEnd",
+                      choices = week_choices,
+                      selected = end_selected)
+  })
+
+  observeEvent(availableMonthlyLabels(), {
+    labels <- availableMonthlyLabels()
+    eventAnalysisNav$monthly_idx <- if (length(labels) == 0) 0L else length(labels)
+  })
+
+  observeEvent(input$eventDailyPrev, {
+    dates <- availableDailyDates()
+    if (length(dates) == 0) return()
+    eventAnalysisNav$daily_idx <- max(1L, eventAnalysisNav$daily_idx - 1L)
+  })
+
+  observeEvent(input$eventDailyNext, {
+    dates <- availableDailyDates()
+    if (length(dates) == 0) return()
+    eventAnalysisNav$daily_idx <- min(length(dates), eventAnalysisNav$daily_idx + 1L)
+  })
+
+  observeEvent(input$eventWeeklyPrev, {
+    weeks <- availableWeeklyStarts()
+    if (length(weeks) == 0) return()
+    eventAnalysisNav$weekly_idx <- max(1L, eventAnalysisNav$weekly_idx - 1L)
+  })
+
+  observeEvent(input$eventWeeklyNext, {
+    weeks <- availableWeeklyStarts()
+    if (length(weeks) == 0) return()
+    eventAnalysisNav$weekly_idx <- min(length(weeks), eventAnalysisNav$weekly_idx + 1L)
+  })
+
+  observeEvent(input$eventMonthlyCalPrev, {
+    labels <- availableMonthlyLabels()
+    if (length(labels) == 0) return()
+    eventAnalysisNav$monthly_idx <- max(1L, eventAnalysisNav$monthly_idx - 1L)
+  })
+
+  observeEvent(input$eventMonthlyCalNext, {
+    labels <- availableMonthlyLabels()
+    if (length(labels) == 0) return()
+    eventAnalysisNav$monthly_idx <- min(length(labels), eventAnalysisNav$monthly_idx + 1L)
+  })
+
+  selectedDailyDate <- reactive({
+    dates <- availableDailyDates()
+    if (length(dates) == 0) return(NA)
+    idx <- min(max(eventAnalysisNav$daily_idx, 1L), length(dates))
+    dates[idx]
+  })
+
+  selectedWeeklyStart <- reactive({
+    weeks <- availableWeeklyStarts()
+    if (length(weeks) == 0) return(NA)
+    idx <- min(max(eventAnalysisNav$weekly_idx, 1L), length(weeks))
+    weeks[idx]
+  })
+
+  weeklyRange <- reactive({
+    weeks <- availableWeeklyStarts()
+    if (length(weeks) == 0) return(NULL)
+
+    start_val <- input$eventWeeklyRangeStart
+    end_val <- input$eventWeeklyRangeEnd
+    if (is.null(start_val) || !(start_val %in% as.character(weeks))) {
+      start_val <- as.character(min(weeks))
+    }
+    if (is.null(end_val) || !(end_val %in% as.character(weeks))) {
+      end_val <- as.character(max(weeks))
+    }
+
+    start_date <- as.Date(start_val)
+    end_date <- as.Date(end_val)
+    if (is.na(start_date) || is.na(end_date)) return(NULL)
+    if (start_date > end_date) {
+      end_date <- start_date
+    }
+    list(start = start_date, end = end_date)
+  })
+
+  output$eventWeeklyImbalancePlot <- renderPlotly({
+    df <- eventRedData()
+    if (nrow(df) == 0) return(plotly_empty())
+    range_weeks <- weeklyRange()
+    if (is.null(range_weeks)) return(plotly_empty())
+
+    weekly_summary <- df[, .(
+      avg_abs_imbalance = safe_stat(abs(imbalance_mw), mean)
+    ), by = week_start]
+    weekly_summary <- weekly_summary[week_start >= range_weeks$start & week_start <= range_weeks$end]
+    if (nrow(weekly_summary) == 0 || all(is.na(weekly_summary$avg_abs_imbalance))) {
+      return(plotly_empty(type = "scatter", mode = "text") %>%
+               layout(
+                 annotations = list(list(
+                   text = "No imbalance data available for selected range",
+                   showarrow = FALSE,
+                   x = 0.5, y = 0.5,
+                   xref = "paper", yref = "paper"
+                 )),
+                 xaxis = list(title = "Week"),
+                 yaxis = list(title = "Avg |Imbalance| (MW)")
+               ))
+    }
+
+    setorder(weekly_summary, week_start)
+    weekly_summary[, week_label := formatWeekLabel(week_start)]
+
+    plot_ly(weekly_summary,
+            x = ~week_start,
+            y = ~avg_abs_imbalance,
+            type = "scatter",
+            mode = "lines+markers+text",
+            line = list(color = "#ff7f0e", width = 2),
+            marker = list(color = "#ff7f0e", size = 6),
+            text = ~sprintf("%.0f MW", avg_abs_imbalance),
+            textposition = "top center",
+            textfont = list(color = "#ff7f0e")) %>%
+      layout(
+        xaxis = list(
+          title = "Week",
+          tickmode = "array",
+          tickvals = weekly_summary$week_start,
+          ticktext = weekly_summary$week_label,
+          tickangle = -90
+        ),
+        yaxis = list(title = "Avg |Imbalance| (MW)"),
+        showlegend = FALSE
+      )
+  })
+
+  selectedMonthlyRow <- reactive({
+    summary <- monthlySummaryData()
+    if (nrow(summary) == 0) return(NULL)
+    tail(summary, 1)
+  })
+
+  selectedCalendarMonth <- reactive({
+    labels <- availableMonthlyLabels()
+    if (length(labels) == 0) return(NA_character_)
+    idx <- min(max(eventAnalysisNav$monthly_idx, 1L), length(labels))
+    labels[idx]
+  })
+
+  output$eventAnalysisSelector <- renderUI({
+    df <- eventRedData()
+    if (nrow(df) == 0) {
+      return(helpText("No Red events available in the current dataset."))
+    }
+    mode <- input$eventAnalysisGranularity %||% "Daily"
+    if (mode == "Daily") {
+      dates <- availableDailyDates()
+      if (length(dates) == 0) {
+        return(helpText("No Red events available in the current dataset."))
+      }
+      selected <- selectedDailyDate()
+      if (is.na(selected)) {
+        return(helpText("No Red events available in the current dataset."))
+      }
+      tagList(
+        div(
+          class = "btn-group",
+          actionButton("eventDailyPrev", label = NULL, icon = icon("chevron-left"), class = "btn-default"),
+          actionButton("eventDailyNext", label = NULL, icon = icon("chevron-right"), class = "btn-default")
+        ),
+        div(style = "margin-top: 10px;", strong(format(selected, "%Y-%m-%d")))
+      )
+    } else if (mode == "Weekly") {
+      return(NULL)
+    } else if (mode == "MonthlyCalendar") {
+      labels <- availableMonthlyLabels()
+      if (length(labels) == 0) {
+        return(helpText("No Red events available in the current dataset."))
+      }
+      selected_label <- selectedCalendarMonth()
+      if (is.na(selected_label)) {
+        return(helpText("No Red events available in the current dataset."))
+      }
+      div(
+        class = "btn-group",
+        actionButton("eventMonthlyCalPrev", label = NULL, icon = icon("chevron-left"), class = "btn-default"),
+        actionButton("eventMonthlyCalNext", label = NULL, icon = icon("chevron-right"), class = "btn-default"),
+        div(style = "display: inline-block; margin-left: 10px;", strong(selected_label))
+      )
+    } else {
+      selected <- selectedMonthlyRow()
+      if (is.null(selected)) {
+        return(helpText("No Red events available in the current dataset."))
+      }
+      label <- as.character(selected$month_label)
+      div(style = "margin-top: 10px;", strong(label))
+    }
+  })
+
+  build_sp_plot <- function(sp_dt, title_text, plot_type = c("bar", "heatmap")) {
+    plot_type <- match.arg(plot_type)
+    sp_dt[, starting_sp := as.integer(starting_sp)]
+    sp_dt[, sp_factor := factor(starting_sp, levels = 1:48)]
+    plot_data <- as.data.frame(sp_dt)
+
+    if (plot_type == "heatmap") {
+      z_matrix <- matrix(plot_data$event_count, nrow = 1)
+      plot_ly(
+        x = plot_data$sp_factor,
+        y = c("SP"),
+        z = z_matrix,
+        type = "heatmap",
+        colors = "Reds",
+        colorbar = list(title = "# Red events")
+      ) %>%
+        layout(
+          xaxis = list(title = "Settlement Period (SP)"),
+          yaxis = list(title = "", showticklabels = FALSE),
+          title = title_text
+        )
+    } else {
+      plot_ly(plot_data, x = ~sp_factor, y = ~event_count, type = "bar", name = "# Red events") %>%
+        layout(
+          yaxis = list(title = "Red events"),
+          xaxis = list(title = "Settlement Period (SP)"),
+          title = title_text
+        )
+    }
+  }
+
+  build_temporal_plot <- function(dt, x_col, title_text, x_title = NULL) {
+    plot_data <- as.data.frame(dt)
+    plt <- plot_ly(plot_data, x = plot_data[[x_col]], y = ~event_count, type = "bar", name = "# Red events") %>%
+      layout(
+        yaxis = list(title = "Red events"),
+        title = title_text
+      )
+    if (!is.null(x_title)) {
+      plt <- plt %>% layout(xaxis = list(title = x_title))
+    }
+    plt
+  }
+
+  monthlyCalendarData <- reactive({
+    df <- eventRedData()
+    if (nrow(df) == 0) return(NULL)
+    selected_label <- selectedCalendarMonth()
+    if (is.na(selected_label)) return(NULL)
+    month_mask <- df[month_label == selected_label]
+    start_date <- as.Date(paste0(selected_label, "-01"))
+    end_date <- as.Date(ceiling_date(start_date, "month") - days(1))
+    full_dates <- data.table(date = seq(start_date, end_date, by = "day"))
+    counts <- month_mask[, .(event_count = .N), by = date]
+    full_dates[counts, event_count := i.event_count, on = "date"]
+    full_dates[is.na(event_count), event_count := 0L]
+    full_dates[, day_label := format(date, "%d")]
+    full_dates[, day_factor := factor(day_label, levels = day_label)]
+    full_dates
+  })
+
+
+  output$eventAnalysisPrimaryPlot <- renderPlotly({
+    df <- eventRedData()
+    if (nrow(df) == 0) return(plotly_empty())
+    mode <- input$eventAnalysisGranularity %||% "Daily"
+
+    if (mode == "Weekly") {
+      weekly_summary <- df[, .(
+        event_count = .N,
+        avg_severity = safe_stat(severity, mean),
+        avg_abs_imbalance = safe_stat(abs(imbalance_mw), mean)
+      ), by = week_start]
+      range_weeks <- weeklyRange()
+      if (is.null(range_weeks)) return(plotly_empty())
+      weekly_summary <- weekly_summary[week_start >= range_weeks$start & week_start <= range_weeks$end]
+      if (nrow(weekly_summary) == 0) {
+        return(plotly_empty(type = "scatter", mode = "text") %>%
+                 layout(
+                   annotations = list(list(
+                     text = "No weekly data in selected range",
+                     showarrow = FALSE,
+                     x = 0.5, y = 0.5,
+                     xref = "paper", yref = "paper"
+                   )),
+                   xaxis = list(title = "Week"),
+                   yaxis = list(title = "# Red events")
+                 ))
+      }
+      setorder(weekly_summary, week_start)
+      weekly_summary[, week_label := formatWeekLabel(week_start)]
+
+      plt <- plot_ly(weekly_summary,
+                     x = ~week_start,
+                     y = ~event_count,
+                     type = "bar",
+                     name = "# Red events",
+                     marker = list(color = ~event_count,
+                                   colorscale = "Reds",
+                                   showscale = FALSE)) %>%
+        layout(
+          xaxis = list(
+            title = "Week",
+            tickmode = "array",
+            tickvals = weekly_summary$week_start,
+            ticktext = weekly_summary$week_label,
+            tickangle = -90
+          ),
+          yaxis = list(title = "# Red events"),
+          title = "Weekly Red Event Aggregation",
+          hovermode = "x unified"
+        )
+
+      if (any(is.finite(weekly_summary$avg_severity))) {
+        plt <- plt %>%
+          add_trace(
+            y = ~avg_severity,
+            type = "scatter",
+            mode = "lines+markers",
+            name = "Avg Severity",
+            line = list(color = "#1f77b4", width = 2),
+            text = ~sprintf("%.2f", avg_severity),
+            textposition = "top center",
+            textfont = list(color = "#1f77b4"),
+            marker = list(color = "#1f77b4", size = 6)
+          ) %>%
+          layout(
+            legend = list(orientation = "h", x = 0.5, y = -0.2, xanchor = "center")
+          )
+      }
+
+      return(plt)
+    } else if (mode == "Monthly") {
+      summary <- monthlySummaryData()
+      if (nrow(summary) == 0) return(plotly_empty())
+      plot_data <- as.data.frame(summary)
+      combined_vals <- c(plot_data$event_count, plot_data$mean_imbalance)
+      combined_vals <- combined_vals[is.finite(combined_vals)]
+      if (!length(combined_vals)) combined_vals <- 0
+      min_combined <- min(c(0, combined_vals))
+      max_combined <- max(c(0, combined_vals))
+      if (identical(min_combined, max_combined)) {
+        max_combined <- max_combined + 1
+        min_combined <- min_combined - 1
+      }
+      plot_ly(plot_data, x = ~month_label, y = ~event_count, type = "bar",
+              marker = list(color = plot_data$event_count, colorscale = "Reds",
+                            showscale = TRUE, colorbar = list(title = "# Red events")),
+              name = "# Red events") %>%
+        add_trace(
+          y = ~mean_imbalance,
+          type = "scatter",
+          mode = "lines+markers+text",
+          name = "Absolute Average Imbalance (MW)",
+          line = list(color = "#1f77b4", width = 2),
+          marker = list(color = "#1f77b4", size = 6),
+          text = ~sprintf("%.1f MW", mean_imbalance),
+          textposition = "top center",
+          textfont = list(color = "#1f77b4"),
+          cliponaxis = FALSE,
+          hoverinfo = "text+x+y"
+        ) %>%
+        layout(
+          yaxis = list(title = "Red events / Imbalance (MW)",
+                       range = c(0, 200)),
+          xaxis = list(title = "Month"),
+          title = "",
+          legend = list(orientation = "h", x = 0.5, xanchor = "center", y = -0.2)
+        )
+    } else if (mode == "MonthlyCalendar") {
+      calendar_data <- monthlyCalendarData()
+      if (is.null(calendar_data) || nrow(calendar_data) == 0) return(plotly_empty())
+      plot_data <- as.data.frame(calendar_data)
+      active_month <- selectedCalendarMonth()
+      plt <- plot_ly(
+        plot_data,
+        x = ~day_factor,
+        y = ~event_count,
+        type = "bar",
+        marker = list(
+          color = plot_data$event_count,
+          colorscale = "Reds"
+        ),
+        showlegend = FALSE
+      )
+
+      if (isTRUE(input$toggleRemitDiamonds)) {
+        remit_daily <- remitTripData()
+        if (nrow(remit_daily) > 0 && !is.na(active_month)) {
+          remit_daily <- remit_daily[format(event_date, "%Y-%m") == active_month]
+          if (nrow(remit_daily)) {
+            if (!"participant_id" %in% names(remit_daily)) remit_daily[, participant_id := NA_character_]
+            if (!"asset_id" %in% names(remit_daily)) remit_daily[, asset_id := NA_character_]
+            if (!"lost_capacity_mw" %in% names(remit_daily)) remit_daily[, lost_capacity_mw := NA_real_]
+            if (!"duration_minutes" %in% names(remit_daily)) remit_daily[, duration_minutes := NA_real_]
+            remit_daily[, day_label := format(event_date, "%d")]
+            remit_daily[, day_factor := factor(day_label, levels = levels(plot_data$day_factor))]
+            remit_daily <- remit_daily[!is.na(day_factor)]
+            if (nrow(remit_daily)) {
+              bar_lookup <- setNames(plot_data$event_count, as.character(plot_data$day_factor))
+              remit_daily[, base_y := fcoalesce(as.numeric(bar_lookup[as.character(day_factor)]), 0)]
+              remit_daily[, marker_y := base_y + 0.3 + (rowid(event_date) - 1) * 0.15]
+              remit_daily[, event_start_str := format(event_start_time, "%Y-%m-%d %H:%M UTC")]
+              remit_daily[, participant_label := fifelse(!is.na(participant_id) & participant_id != "", participant_id, "Unknown")]
+              remit_daily[, asset_label := fifelse(!is.na(asset_id) & asset_id != "", asset_id, "Unknown")]
+              remit_daily[, capacity_label := fifelse(!is.na(lost_capacity_mw), sprintf("%.0f MW", lost_capacity_mw), "N/A")]
+              remit_daily[, duration_label := fifelse(!is.na(duration_minutes), sprintf("%.0f min", duration_minutes), "N/A")]
+              remit_daily[, tooltip := sprintf(
+                paste0("Unplanned Trip: %s / %s",
+                       "<br>Start: %s",
+                       "<br>Lost Capacity: %s",
+                       "<br>Duration: %s"),
+                participant_label,
+                asset_label,
+                event_start_str,
+                capacity_label,
+                duration_label
+              )]
+              plt <- plt %>%
+                add_trace(
+                  data = as.data.frame(remit_daily),
+                  x = ~day_factor,
+                  y = ~marker_y,
+                  type = "scatter",
+                  mode = "markers",
+                  marker = list(symbol = "diamond", size = 12, color = "#e377c2",
+                                line = list(color = "#6f1d3b", width = 1.2)),
+                  hoverinfo = "text",
+                  text = ~tooltip,
+                  name = "Unplanned production trip",
+                  showlegend = TRUE
+                )
+            }
+          }
+        }
+      }
+
+      plt %>%
+        layout(
+          yaxis = list(title = "Red events"),
+          xaxis = list(title = "Day of Month"),
+          title = active_month,
+          showlegend = TRUE,
+          legend = list(orientation = "h", x = 1, xanchor = "right",
+                        y = -0.2, title = list(text = NULL))
+        )
+    } else {
+      plotly_empty()
+    }
+  })
+
+  output$eventAnalysisDailyPlot <- renderPlotly({
+    df <- eventRedData()
+    if (nrow(df) == 0) return(plotly_empty())
+    selected_date <- selectedDailyDate()
+    if (is.na(selected_date)) return(plotly_empty())
+    day_subset <- df[date == selected_date]
+    sp_counts <- day_subset[, .(
+      event_count = .N
+    ), by = starting_sp]
+    sp_counts <- complete_sp_counts(sp_counts)
+    build_sp_plot(sp_counts, paste("Daily SP Distribution -", selected_date), plot_type = "bar")
+  })
+
+  output$eventAnalysisDailyDemandPlot <- renderPlotly({
+    demand_dt <- demandErrorData()
+    if (nrow(demand_dt) == 0) return(plotly_empty())
+    selected_date <- selectedDailyDate()
+    if (is.na(selected_date)) return(plotly_empty())
+    day_data <- demand_dt[Date == selected_date]
+    if (nrow(day_data) == 0 || all(is.na(day_data$Absolute_Error))) {
+      msg <- paste0("No demand forecast error data for ", selected_date,
+                    ". Ensure red_event_demand.csv covers this date.")
+      return(plotly_empty(type = "scatter", mode = "text") %>%
+               layout(
+                 annotations = list(
+                   text = msg,
+                   showarrow = FALSE,
+                   xref = "paper", yref = "paper", x = 0.5, y = 0.5
+                 ),
+                 xaxis = list(title = "Settlement Period"),
+                 yaxis = list(title = "Absolute Error (MW)")
+               ))
+    }
+    sp_base <- data.table(Settlement_Period = 1:48)
+    if (nrow(day_data)) {
+      day_agg <- day_data[, .(abs_error = safe_stat(Absolute_Error, mean)), by = Settlement_Period]
+    } else {
+      day_agg <- data.table(Settlement_Period = integer(), abs_error = numeric())
+    }
+    merged <- merge(sp_base, day_agg, by = "Settlement_Period", all.x = TRUE)
+    merged[is.na(abs_error), abs_error := 0]
+    merged[, sp_factor := factor(Settlement_Period, levels = 1:48)]
+    plot_ly(merged,
+            x = ~sp_factor,
+            y = ~abs_error,
+            type = "bar",
+            name = "Absolute Error (MW)",
+            marker = list(color = "#1f77b4")) %>%
+      layout(
+        xaxis = list(title = "Settlement Period"),
+        yaxis = list(title = "Absolute Error (MW)"),
+        title = paste("Forecast Absolute Error -", selected_date)
+      )
+  })
+
+  output$eventAnalysisMonthlyMetricsPlot <- renderPlotly({
+    summary <- monthlySummaryData()
+    if (nrow(summary) == 0) return(plotly_empty())
+    plot_data <- as.data.frame(summary)
+    plot_ly(plot_data, x = ~month_label, y = ~mean_severity,
+            type = "scatter", mode = "lines+markers",
+            name = "Avg Severity", line = list(color = "#ff7f0e", width = 2),
+            marker = list(color = "#ff7f0e", size = 6), text = ~sprintf("%.2f", mean_severity),
+            textposition = "top center", cliponaxis = FALSE,
+            hoverinfo = "text+x+y") %>%
+      layout(
+        yaxis = list(title = "Average Severity", range = c(0, 6)),
+        xaxis = list(title = "Month"),
+        showlegend = FALSE,
+        title = ""
+      )
+  })
+
 
   # --- Frequency Excursion Tab Logic ---
 
@@ -1660,13 +2468,22 @@ server <- function(input, output, session) {
   })
 
   # Filtered data for Excursion plots
-  filteredExcursionData <- eventReactive(input$updateExcursionPlots, {
+  filteredExcursionData <- eventReactive(list(input$updateExcursionPlots, input$excursionThresholds), {
     req(input$excursionStartDate, input$excursionEndDate)
 
     daily_df <- excursionDailyData()
 
     # Filter by date range
-    daily_filtered <- daily_df[date >= input$excursionStartDate & date <= input$excursionEndDate]
+    thresholds <- selectedExcursionThresholds()
+    if (!length(thresholds)) {
+      return(list(daily = data.table()))
+    }
+    if (!"threshold" %in% names(daily_df)) {
+      daily_df[, threshold := NA_real_]
+    }
+    daily_filtered <- daily_df[date >= input$excursionStartDate &
+                                 date <= input$excursionEndDate &
+                                 threshold %in% thresholds]
 
     list(daily = daily_filtered)
   }, ignoreNULL = FALSE)
@@ -1677,6 +2494,11 @@ server <- function(input, output, session) {
 
     # Check if single day selected
     single_day <- input$excursionStartDate == input$excursionEndDate
+    thresholds <- selectedExcursionThresholds()
+    if (!length(thresholds)) {
+      return(excursionEmptyPlot("Enable at least one threshold to view excursions.",
+                                "Settlement Period (SP)", "Count of Excursion Events"))
+    }
 
     if (single_day) {
       # Single day: count excursion events per SP
@@ -1686,15 +2508,14 @@ server <- function(input, output, session) {
       day_freq <- freq_data[date == input$excursionStartDate]
 
       if (nrow(day_freq) == 0) {
-        return(plotly_empty(type = "scatter", mode = "markers") %>%
-                 layout(title = "No data available for selected date"))
+        return(excursionEmptyPlot("No data available for selected date.",
+                                  "Settlement Period (SP)", "Count of Excursion Events"))
       }
 
       # Calculate deviation
       day_freq[, deviation := abs(f - 50)]
 
       # Detect excursions for each threshold
-      thresholds <- c(0.1, 0.15, 0.2)
       all_excursions <- list()
 
       for (threshold in thresholds) {
@@ -1720,46 +2541,45 @@ server <- function(input, output, session) {
         }
       }
 
-      # Combine all excursions
-      if (length(all_excursions) > 0) {
-        combined_excursions <- rbindlist(all_excursions, fill = TRUE)
-
-        # Count excursions per SP for each threshold
-        count_01 <- combined_excursions[threshold == 0.1, .N, by = starting_sp]
-        setnames(count_01, c("SP", "count_01"))
-        count_015 <- combined_excursions[threshold == 0.15, .N, by = starting_sp]
-        setnames(count_015, c("SP", "count_015"))
-        count_02 <- combined_excursions[threshold == 0.2, .N, by = starting_sp]
-        setnames(count_02, c("SP", "count_02"))
-
-        # Create full SP range and merge
-        all_sps <- data.table(SP = 1:48)
-        all_sps <- merge(all_sps, count_01, by = "SP", all.x = TRUE)
-        all_sps <- merge(all_sps, count_015, by = "SP", all.x = TRUE)
-        all_sps <- merge(all_sps, count_02, by = "SP", all.x = TRUE)
-        all_sps[is.na(count_01), count_01 := 0]
-        all_sps[is.na(count_015), count_015 := 0]
-        all_sps[is.na(count_02), count_02 := 0]
+      combined_excursions <- if (length(all_excursions) > 0) {
+        rbindlist(all_excursions, fill = TRUE)
       } else {
-        all_sps <- data.table(SP = 1:48, count_01 = 0, count_015 = 0, count_02 = 0)
+        data.table(threshold = numeric(), starting_sp = integer())
       }
 
-      # Create plot
-      p <- plot_ly(all_sps) %>%
-        add_trace(x = ~SP, y = ~count_01, name = "0.1 Hz",
-                  type = "scatter", mode = "lines",
-                  line = list(color = "#ff7f0e", width = 2)) %>%
-        add_trace(x = ~SP, y = ~count_015, name = "0.15 Hz",
-                  type = "scatter", mode = "lines",
-                  line = list(color = "#2ca02c", width = 2)) %>%
-        add_trace(x = ~SP, y = ~count_02, name = "0.2 Hz",
-                  type = "scatter", mode = "lines",
-                  line = list(color = "#1f77b4", width = 2)) %>%
+      p <- plot_ly()
+      for (thr in thresholds) {
+        sp_series <- data.table(SP = 1:48, value = 0)
+        if (nrow(combined_excursions)) {
+          thr_counts <- combined_excursions[threshold == thr, .N, by = starting_sp]
+          if (nrow(thr_counts)) {
+            setnames(thr_counts, c("SP", "value"))
+            sp_series <- merge(sp_series, thr_counts, by = "SP", all.x = TRUE, suffixes = c("", ".thr"))
+            if ("value.thr" %in% names(sp_series)) {
+              sp_series[, value := value.thr]
+              sp_series[, value.thr := NULL]
+            }
+          }
+        }
+        sp_series[is.na(value), value := 0]
+        p <- p %>%
+          add_trace(
+            data = sp_series,
+            x = ~SP,
+            y = ~value,
+            name = sprintf("%.2f Hz", thr),
+            type = "bar",
+            marker = list(color = getExcursionColor(thr))
+          )
+      }
+
+      p <- p %>%
         layout(
           title = "Number of Excursions per SP",
           xaxis = list(title = "Settlement Period (SP)", range = c(0.5, 48.5)),
           yaxis = list(title = "Count of Excursion Events"),
-          legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center")
+          legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center"),
+          barmode = "group"
         )
 
       return(p)
@@ -1769,66 +2589,32 @@ server <- function(input, output, session) {
       data <- filteredExcursionData()
       df <- data$daily
 
+      df <- df[threshold %in% thresholds]
       if (nrow(df) == 0) {
-        return(plotly_empty(type = "scatter", mode = "markers") %>%
-                 layout(title = "No data available for selected date range"))
+        return(excursionEmptyPlot("No data available for selected thresholds/date range.",
+                                  "Date", "# Excursions"))
       }
-
-      # Split data by threshold
-      df_01 <- df[threshold == 0.1]
-      df_015 <- df[threshold == 0.15]
-      df_02 <- df[threshold == 0.2]
 
       # Create plotly with single Y-axis
       p <- plot_ly()
 
-      # Add 0.1 Hz line
-      p <- p %>% add_trace(
-        data = df_01,
-        x = ~date,
-        y = ~num_excursions,
-        name = "0.1 Hz",
-        type = "scatter",
-        mode = "lines",
-        line = list(color = "#ff7f0e", width = 2),
-        hovertemplate = paste0(
-          "Date: %{x|%b %d, %Y}<br>",
-          "0.1 Hz: %{y}<br>",
-          "<extra></extra>"
+      for (thr in thresholds) {
+        thr_df <- df[threshold == thr]
+        if (!nrow(thr_df)) next
+        p <- p %>% add_trace(
+          data = thr_df,
+          x = ~date,
+          y = ~num_excursions,
+          name = sprintf("%.2f Hz", thr),
+          type = "bar",
+          marker = list(color = getExcursionColor(thr)),
+          hovertemplate = paste0(
+            "Date: %{x|%b %d, %Y}<br>",
+            sprintf("%.2f Hz: ", thr), "%{y}<br>",
+            "<extra></extra>"
+          )
         )
-      )
-
-      # Add 0.15 Hz line
-      p <- p %>% add_trace(
-        data = df_015,
-        x = ~date,
-        y = ~num_excursions,
-        name = "0.15 Hz",
-        type = "scatter",
-        mode = "lines",
-        line = list(color = "#2ca02c", width = 2),
-        hovertemplate = paste0(
-          "Date: %{x|%b %d, %Y}<br>",
-          "0.15 Hz: %{y}<br>",
-          "<extra></extra>"
-        )
-      )
-
-      # Add 0.2 Hz line
-      p <- p %>% add_trace(
-        data = df_02,
-        x = ~date,
-        y = ~num_excursions,
-        name = "0.2 Hz",
-        type = "scatter",
-        mode = "lines",
-        line = list(color = "#1f77b4", width = 2),
-        hovertemplate = paste0(
-          "Date: %{x|%b %d, %Y}<br>",
-          "0.2 Hz: %{y}<br>",
-          "<extra></extra>"
-        )
-      )
+      }
 
       # Configure layout with single Y-axis
       p <- p %>% layout(
@@ -1849,6 +2635,11 @@ server <- function(input, output, session) {
 
     # Check if single day selected
     single_day <- input$excursionStartDate == input$excursionEndDate
+    thresholds <- selectedExcursionThresholds()
+    if (!length(thresholds)) {
+      return(excursionEmptyPlot("Enable at least one threshold to view excursions.",
+                                "Settlement Period (SP)", "Total Duration (seconds)"))
+    }
 
     if (single_day) {
       # Single day: show total duration per SP
@@ -1857,33 +2648,25 @@ server <- function(input, output, session) {
       day_freq <- freq_data[date == input$excursionStartDate]
 
       if (nrow(day_freq) == 0) {
-        return(plotly_empty(type = "scatter", mode = "markers") %>%
-                 layout(title = "No data available for selected date"))
+        return(excursionEmptyPlot("No data available for selected date.",
+                                  "Settlement Period (SP)", "Total Duration (seconds)"))
       }
 
       # Calculate deviation
       day_freq[, deviation := abs(f - 50)]
 
       # Detect excursions for each threshold
-      thresholds <- c(0.1, 0.15, 0.2)
       all_excursions <- list()
 
       for (threshold in thresholds) {
-        # Mark points exceeding threshold
         day_freq[, exceeds := deviation >= threshold]
-
-        # Create excursion groups
         day_freq[, excursion_id := cumsum(c(1, diff(exceeds) != 0))]
         day_freq[, is_excursion := exceeds == TRUE]
-
-        # Get excursion events with start_time and duration
         excursions <- day_freq[is_excursion == TRUE, .(
           start_time = min(dtm_sec),
           duration_sec = .N
         ), by = excursion_id]
-
         if (nrow(excursions) > 0) {
-          # Calculate starting SP from start_time
           excursions[, starting_sp := floor(as.numeric(difftime(start_time,
                                              as.POSIXct(paste0(as.Date(start_time), " 00:00:00"), tz = "UTC"),
                                              units = "secs")) / 1800) + 1]
@@ -1892,170 +2675,124 @@ server <- function(input, output, session) {
         }
       }
 
-      # Combine all excursions
-      if (length(all_excursions) > 0) {
-        combined_excursions <- rbindlist(all_excursions, fill = TRUE)
-
-        # Sum duration per SP for each threshold
-        dur_01 <- combined_excursions[threshold == 0.1, .(duration = sum(duration_sec)), by = starting_sp]
-        setnames(dur_01, c("SP", "dur_01"))
-        dur_015 <- combined_excursions[threshold == 0.15, .(duration = sum(duration_sec)), by = starting_sp]
-        setnames(dur_015, c("SP", "dur_015"))
-        dur_02 <- combined_excursions[threshold == 0.2, .(duration = sum(duration_sec)), by = starting_sp]
-        setnames(dur_02, c("SP", "dur_02"))
-
-        # Create full SP range and merge
-        all_sps <- data.table(SP = 1:48)
-        all_sps <- merge(all_sps, dur_01, by = "SP", all.x = TRUE)
-        all_sps <- merge(all_sps, dur_015, by = "SP", all.x = TRUE)
-        all_sps <- merge(all_sps, dur_02, by = "SP", all.x = TRUE)
-        all_sps[is.na(dur_01), dur_01 := 0]
-        all_sps[is.na(dur_015), dur_015 := 0]
-        all_sps[is.na(dur_02), dur_02 := 0]
+      combined_excursions <- if (length(all_excursions) > 0) {
+        rbindlist(all_excursions, fill = TRUE)
       } else {
-        all_sps <- data.table(SP = 1:48, dur_01 = 0, dur_015 = 0, dur_02 = 0)
+        data.table(threshold = numeric(), starting_sp = integer(), duration_sec = numeric())
       }
 
-      # Create plot
-      p <- plot_ly(all_sps) %>%
-        add_trace(x = ~SP, y = ~dur_01, name = "0.1 Hz",
-                  type = "scatter", mode = "lines",
-                  line = list(color = "#ff7f0e", width = 2)) %>%
-        add_trace(x = ~SP, y = ~dur_015, name = "0.15 Hz",
-                  type = "scatter", mode = "lines",
-                  line = list(color = "#2ca02c", width = 2)) %>%
-        add_trace(x = ~SP, y = ~dur_02, name = "0.2 Hz",
-                  type = "scatter", mode = "lines",
-                  line = list(color = "#1f77b4", width = 2)) %>%
+      p <- plot_ly()
+      for (thr in thresholds) {
+        sp_series <- data.table(SP = 1:48, duration = 0)
+        if (nrow(combined_excursions)) {
+          thr_dur <- combined_excursions[threshold == thr, .(duration = sum(duration_sec)), by = starting_sp]
+          if (nrow(thr_dur)) {
+            setnames(thr_dur, c("SP", "duration"))
+            sp_series <- merge(sp_series, thr_dur, by = "SP", all.x = TRUE, suffixes = c("", ".thr"))
+            if ("duration.thr" %in% names(sp_series)) {
+              sp_series[, duration := duration.thr]
+              sp_series[, duration.thr := NULL]
+            }
+          }
+        }
+        sp_series[is.na(duration), duration := 0]
+        p <- p %>% add_trace(
+          data = sp_series,
+          x = ~SP,
+          y = ~duration,
+          name = sprintf("%.2f Hz", thr),
+          type = "bar",
+          marker = list(color = getExcursionColor(thr))
+        )
+      }
+
+      p <- p %>%
         layout(
           title = "Total Duration of Excursions per SP",
           xaxis = list(title = "Settlement Period (SP)", range = c(0.5, 48.5)),
           yaxis = list(title = "Total Duration (seconds)"),
-          legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center")
+          legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center"),
+          barmode = "group"
         )
 
       return(p)
 
     } else {
-      # Multi-day: show time series
       data <- filteredExcursionData()
       df <- data$daily
-
+      df <- df[threshold %in% thresholds]
       if (nrow(df) == 0) {
-        return(plotly_empty(type = "scatter", mode = "markers") %>%
-                 layout(title = "No data available for selected date range"))
+        return(excursionEmptyPlot("No data available for selected thresholds/date range.",
+                                  "Date", "Duration (seconds)"))
       }
 
-      # Split data by threshold
-      df_01 <- df[threshold == 0.1]
-      df_015 <- df[threshold == 0.15]
-      df_02 <- df[threshold == 0.2]
-
-      # Create plotly with single Y-axis
       p <- plot_ly()
-
-      # Add 0.1 Hz line
-      p <- p %>% add_trace(
-        data = df_01,
-        x = ~date,
-        y = ~total_duration_sec,
-        name = "0.1 Hz",
-        type = "scatter",
-        mode = "lines",
-        line = list(color = "#ff7f0e", width = 2),
-        hovertemplate = paste0(
-          "Date: %{x|%b %d, %Y}<br>",
-          "0.1 Hz: %{y} sec<br>",
-          "<extra></extra>"
+      for (thr in thresholds) {
+        thr_df <- df[threshold == thr]
+        if (!nrow(thr_df)) next
+        p <- p %>% add_trace(
+          data = thr_df,
+          x = ~date,
+          y = ~total_duration_sec,
+          name = sprintf("%.2f Hz", thr),
+          type = "bar",
+          marker = list(color = getExcursionColor(thr)),
+          hovertemplate = paste0(
+            "Date: %{x|%b %d, %Y}<br>",
+            sprintf("%.2f Hz: ", thr), "%{y} sec<br>",
+            "<extra></extra>"
+          )
         )
-      )
+      }
 
-      # Add 0.15 Hz line
-      p <- p %>% add_trace(
-        data = df_015,
-        x = ~date,
-        y = ~total_duration_sec,
-        name = "0.15 Hz",
-        type = "scatter",
-        mode = "lines",
-        line = list(color = "#2ca02c", width = 2),
-        hovertemplate = paste0(
-          "Date: %{x|%b %d, %Y}<br>",
-          "0.15 Hz: %{y} sec<br>",
-          "<extra></extra>"
-        )
-      )
-
-      # Add 0.2 Hz line
-      p <- p %>% add_trace(
-        data = df_02,
-        x = ~date,
-        y = ~total_duration_sec,
-        name = "0.2 Hz",
-        type = "scatter",
-        mode = "lines",
-        line = list(color = "#1f77b4", width = 2),
-        hovertemplate = paste0(
-          "Date: %{x|%b %d, %Y}<br>",
-          "0.2 Hz: %{y} sec<br>",
-          "<extra></extra>"
-        )
-      )
-
-      # Configure layout with single Y-axis
       p <- p %>% layout(
         title = "Total Duration of Excursions",
         xaxis = list(title = "Date"),
         yaxis = list(title = "Duration (seconds)"),
         legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center"),
-        hovermode = "x unified"
+        hovermode = "x unified",
+        barmode = "group"
       )
 
       return(p)
+
     }
   })
+
 
   # Percentage of Time Plot
   output$excursionPercentagePlot <- renderPlotly({
     req(input$excursionStartDate, input$excursionEndDate)
 
-    # Check if single day selected
     single_day <- input$excursionStartDate == input$excursionEndDate
+    thresholds <- selectedExcursionThresholds()
+    if (!length(thresholds)) {
+      return(excursionEmptyPlot("Enable at least one threshold to view excursions.",
+                                "Settlement Period (SP)", "Time in Excursion (%)"))
+    }
 
     if (single_day) {
-      # Single day: show percentage per SP
       freq_data <- frequencyData()
       freq_data[, date := as.Date(dtm_sec)]
       day_freq <- freq_data[date == input$excursionStartDate]
 
       if (nrow(day_freq) == 0) {
-        return(plotly_empty(type = "scatter", mode = "markers") %>%
-                 layout(title = "No data available for selected date"))
+        return(excursionEmptyPlot("No data available for selected date.",
+                                  "Settlement Period (SP)", "Time in Excursion (%)"))
       }
 
-      # Calculate deviation
       day_freq[, deviation := abs(f - 50)]
-
-      # Detect excursions for each threshold
-      thresholds <- c(0.1, 0.15, 0.2)
       all_excursions <- list()
 
       for (threshold in thresholds) {
-        # Mark points exceeding threshold
         day_freq[, exceeds := deviation >= threshold]
-
-        # Create excursion groups
         day_freq[, excursion_id := cumsum(c(1, diff(exceeds) != 0))]
         day_freq[, is_excursion := exceeds == TRUE]
-
-        # Get excursion events with start_time and duration
         excursions <- day_freq[is_excursion == TRUE, .(
           start_time = min(dtm_sec),
           duration_sec = .N
         ), by = excursion_id]
-
         if (nrow(excursions) > 0) {
-          # Calculate starting SP from start_time
           excursions[, starting_sp := floor(as.numeric(difftime(start_time,
                                              as.POSIXct(paste0(as.Date(start_time), " 00:00:00"), tz = "UTC"),
                                              units = "secs")) / 1800) + 1]
@@ -2064,132 +2801,105 @@ server <- function(input, output, session) {
         }
       }
 
-      # Combine all excursions
-      if (length(all_excursions) > 0) {
-        combined_excursions <- rbindlist(all_excursions, fill = TRUE)
-
-        # Sum duration per SP for each threshold and convert to percentage
-        # Each SP is 1800 seconds (30 minutes)
-        pct_01 <- combined_excursions[threshold == 0.1, .(pct = (sum(duration_sec) / 1800) * 100), by = starting_sp]
-        setnames(pct_01, c("SP", "pct_01"))
-        pct_015 <- combined_excursions[threshold == 0.15, .(pct = (sum(duration_sec) / 1800) * 100), by = starting_sp]
-        setnames(pct_015, c("SP", "pct_015"))
-        pct_02 <- combined_excursions[threshold == 0.2, .(pct = (sum(duration_sec) / 1800) * 100), by = starting_sp]
-        setnames(pct_02, c("SP", "pct_02"))
-
-        # Create full SP range and merge
-        all_sps <- data.table(SP = 1:48)
-        all_sps <- merge(all_sps, pct_01, by = "SP", all.x = TRUE)
-        all_sps <- merge(all_sps, pct_015, by = "SP", all.x = TRUE)
-        all_sps <- merge(all_sps, pct_02, by = "SP", all.x = TRUE)
-        all_sps[is.na(pct_01), pct_01 := 0]
-        all_sps[is.na(pct_015), pct_015 := 0]
-        all_sps[is.na(pct_02), pct_02 := 0]
+      combined_excursions <- if (length(all_excursions) > 0) {
+        rbindlist(all_excursions, fill = TRUE)
       } else {
-        all_sps <- data.table(SP = 1:48, pct_01 = 0, pct_015 = 0, pct_02 = 0)
+        data.table(threshold = numeric(), starting_sp = integer(), duration_sec = numeric())
       }
 
-      # Create plot
-      p <- plot_ly(all_sps) %>%
-        add_trace(x = ~SP, y = ~pct_01, name = "0.1 Hz",
-                  type = "scatter", mode = "lines",
-                  line = list(color = "#ff7f0e", width = 2)) %>%
-        add_trace(x = ~SP, y = ~pct_015, name = "0.15 Hz",
-                  type = "scatter", mode = "lines",
-                  line = list(color = "#2ca02c", width = 2)) %>%
-        add_trace(x = ~SP, y = ~pct_02, name = "0.2 Hz",
-                  type = "scatter", mode = "lines",
-                  line = list(color = "#1f77b4", width = 2)) %>%
+      p <- plot_ly()
+      for (thr in thresholds) {
+        sp_series <- data.table(SP = 1:48, pct = 0)
+        if (nrow(combined_excursions)) {
+          thr_pct <- combined_excursions[threshold == thr, .(pct = (sum(duration_sec) / 1800) * 100), by = starting_sp]
+          if (nrow(thr_pct)) {
+            setnames(thr_pct, c("SP", "pct"))
+            sp_series <- merge(sp_series, thr_pct, by = "SP", all.x = TRUE, suffixes = c("", ".thr"))
+            if ("pct.thr" %in% names(sp_series)) {
+              sp_series[, pct := pct.thr]
+              sp_series[, pct.thr := NULL]
+            }
+          }
+        }
+        sp_series[is.na(pct), pct := 0]
+        p <- p %>%
+          add_trace(
+            data = sp_series,
+            x = ~SP,
+            y = ~pct,
+            name = sprintf("%.2f Hz", thr),
+            type = "bar",
+            marker = list(color = getExcursionColor(thr))
+          )
+      }
+
+      p <- p %>%
         layout(
-          title = "Percentage of Time in Excursion per SP",
+          title = "Time in Excursion per SP",
           xaxis = list(title = "Settlement Period (SP)", range = c(0.5, 48.5)),
-          yaxis = list(title = "Percentage of SP Time (%)"),
-          legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center")
+          yaxis = list(title = "Time in Excursion (%)"),
+          legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center"),
+          barmode = "group"
         )
 
       return(p)
 
     } else {
-      # Multi-day: show time series
       data <- filteredExcursionData()
       df <- data$daily
-
+      df <- df[threshold %in% thresholds]
       if (nrow(df) == 0) {
-        return(plotly_empty(type = "scatter", mode = "markers") %>%
-                 layout(title = "No data available for selected date range"))
+        return(excursionEmptyPlot("No data available for selected thresholds/date range.",
+                                  "Date", "Time in Excursion (%)"))
       }
 
-      # Calculate percentage: (duration_sec / 86400 sec per day) * 100
-      df[, percentage := (total_duration_sec / 86400) * 100]
+      df[, duration_pct := (total_duration_sec / (24 * 3600)) * 100]
 
-      # Split data by threshold
-      df_01 <- df[threshold == 0.1]
-      df_015 <- df[threshold == 0.15]
-      df_02 <- df[threshold == 0.2]
-
-      # Create plotly
       p <- plot_ly()
-
-      # Add 0.1 Hz line
-      p <- p %>% add_trace(
-        data = df_01,
-        x = ~date,
-        y = ~percentage,
-        name = "0.1 Hz",
-        type = "scatter",
-        mode = "lines",
-        line = list(color = "#ff7f0e", width = 2),
-        hovertemplate = paste0(
-          "Date: %{x|%b %d, %Y}<br>",
-          "0.1 Hz: %{y:.2f}%<br>",
-          "<extra></extra>"
+      for (thr in thresholds) {
+        thr_df <- df[threshold == thr]
+        if (!nrow(thr_df)) next
+        p <- p %>% add_trace(
+          data = thr_df,
+          x = ~date,
+          y = ~duration_pct,
+          name = sprintf("%.2f Hz", thr),
+          type = "bar",
+          marker = list(color = getExcursionColor(thr)),
+          hovertemplate = paste0(
+            "Date: %{x|%b %d, %Y}<br>",
+            sprintf("%.2f Hz: ", thr), "%{y:.2f}%<br>",
+            "<extra></extra>"
+          )
         )
-      )
+      }
 
-      # Add 0.15 Hz line
-      p <- p %>% add_trace(
-        data = df_015,
-        x = ~date,
-        y = ~percentage,
-        name = "0.15 Hz",
-        type = "scatter",
-        mode = "lines",
-        line = list(color = "#2ca02c", width = 2),
-        hovertemplate = paste0(
-          "Date: %{x|%b %d, %Y}<br>",
-          "0.15 Hz: %{y:.2f}%<br>",
-          "<extra></extra>"
-        )
-      )
-
-      # Add 0.2 Hz line
-      p <- p %>% add_trace(
-        data = df_02,
-        x = ~date,
-        y = ~percentage,
-        name = "0.2 Hz",
-        type = "scatter",
-        mode = "lines",
-        line = list(color = "#1f77b4", width = 2),
-        hovertemplate = paste0(
-          "Date: %{x|%b %d, %Y}<br>",
-          "0.2 Hz: %{y:.2f}%<br>",
-          "<extra></extra>"
-        )
-      )
-
-      # Configure layout
       p <- p %>% layout(
-        title = "Percentage of Time in Excursion",
+        title = "Daily Excursion Percentage",
         xaxis = list(title = "Date"),
-        yaxis = list(title = "Percentage of Time (%)"),
+        yaxis = list(title = "Time in Excursion (%)"),
         legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center"),
-        hovermode = "x unified"
+        hovermode = "x unified",
+        barmode = "group"
       )
 
       return(p)
+
     }
   })
+
+  output$excursionMonthlyCountPlot <- renderPlotly({
+    excursionEmptyPlot("Monthly view coming soon.", "Month", "# Excursions")
+  })
+
+  output$excursionMonthlyDurationPlot <- renderPlotly({
+    excursionEmptyPlot("Monthly view coming soon.", "Month", "Duration (hours)")
+  })
+
+  output$excursionMonthlyAvgDurationPlot <- renderPlotly({
+    excursionEmptyPlot("Monthly view coming soon.", "Month", "Average Duration (seconds)")
+  })
+
 
   # SP Deviation Plot
   output$excursionSPDeviationPlot <- renderPlotly({
@@ -2295,7 +3005,8 @@ server <- function(input, output, session) {
             zerolinewidth = 1
           ),
           legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center"),
-          hovermode = "x unified"
+          hovermode = "x unified",
+          barmode = "group"
         )
 
       return(p)
@@ -2668,6 +3379,27 @@ server <- function(input, output, session) {
   })
 
   # --- Response Holding Tab Logic ---
+  response_metric_colors <- c(
+    "SysDyn_LP" = "#d62728",
+    "SysDyn_H" = "#1f77b4",
+    "P" = "#2ca02c",
+    "S" = "#ff7f0e",
+    "H" = "#9467bd",
+    "DRL" = "#8c564b",
+    "DRH" = "#e377c2",
+    "DML" = "#7f7f7f",
+    "DMH" = "#bcbd22"
+  )
+  response_metric_labels <- c(
+    "SysDyn_LP" = "SysDyn_LP (Total Eq. Low Response)",
+    "SysDyn_H" = "SysDyn_H (Total Eq. High Response)"
+  )
+  response_metric_label <- function(metric) {
+    if (metric %in% names(response_metric_labels)) {
+      return(response_metric_labels[[metric]])
+    }
+    metric
+  }
 
   # Reactive expression to load response holding data
   responseData <- reactive({
@@ -2692,6 +3424,71 @@ server <- function(input, output, session) {
     df_filtered <- df[Date >= input$responseStartDate & Date <= input$responseEndDate]
     return(df_filtered)
   }, ignoreNULL = FALSE)
+
+  responseMonthlyChoices <- reactive({
+    df <- responseData()
+    if (nrow(df) == 0) return(character())
+    months <- sort(unique(format(df$Date, "%Y-%m")))
+    choices <- stats::setNames(months, format(as.Date(paste0(months, "-01")), "%b %Y"))
+    choices
+  })
+
+  output$responseMonthlyStartUI <- renderUI({
+    choices <- responseMonthlyChoices()
+    if (!length(choices)) {
+      return(tags$p("No data available", style = "color: #999; font-style: italic;"))
+    }
+    selected <- isolate(input$responseMonthlyStart)
+    if (is.null(selected) || !(selected %in% choices)) {
+      selected <- choices[1]
+    }
+    selectInput("responseMonthlyStart", "Start Month:", choices = choices, selected = selected)
+  })
+
+  output$responseMonthlyEndUI <- renderUI({
+    choices <- responseMonthlyChoices()
+    if (!length(choices)) {
+      return(tags$p("No data available", style = "color: #999; font-style: italic;"))
+    }
+    selected <- isolate(input$responseMonthlyEnd)
+    if (is.null(selected) || !(selected %in% choices)) {
+      selected <- tail(choices, 1)
+    }
+    selectInput("responseMonthlyEnd", "End Month:", choices = choices, selected = selected)
+  })
+
+  responseWeeklyChoices <- reactive({
+    df <- responseData()
+    if (nrow(df) == 0) return(character())
+    week_starts <- sort(unique(floor_date(df$Date, unit = "week", week_start = 1)))
+    display <- paste0(format(week_starts, "%d %b %Y"), " (W", sprintf("%02d", isoweek(week_starts)), ")")
+    stats::setNames(format(week_starts, "%Y-%m-%d"), display)
+  })
+
+  output$responseWeeklyStartUI <- renderUI({
+    choices <- responseWeeklyChoices()
+    if (!length(choices)) {
+      return(tags$p("No data available", style = "color: #999; font-style: italic;"))
+    }
+    selected <- isolate(input$responseWeeklyStart)
+    if (is.null(selected) || !(selected %in% choices)) {
+      selected <- choices[1]
+    }
+    selectInput("responseWeeklyStart", "Start Week:", choices = choices, selected = selected)
+  })
+
+  output$responseWeeklyEndUI <- renderUI({
+    choices <- responseWeeklyChoices()
+    if (!length(choices)) {
+      return(tags$p("No data available", style = "color: #999; font-style: italic;"))
+    }
+    selected <- isolate(input$responseWeeklyEnd)
+    if (is.null(selected) || !(selected %in% choices)) {
+      selected <- tail(choices, 1)
+    }
+    selectInput("responseWeeklyEnd", "End Week:", choices = choices, selected = selected)
+  })
+
 
   # MFR Summary
   output$mfrSummaryUI <- renderUI({
@@ -2760,11 +3557,11 @@ server <- function(input, output, session) {
       tags$table(
         style = "width: 100%; border-collapse: collapse;",
         tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold; color: #d62728;", "SysDyn_LP:"),
+          tags$td(style = "padding: 5px; font-weight: bold; color: #d62728;", "SysDyn_LP (Total Eq. Low Response):"),
           tags$td(style = "padding: 5px; text-align: right;", sprintf("%.2f MW", mean(df$SysDyn_LP, na.rm = TRUE)))
         ),
         tags$tr(
-          tags$td(style = "padding: 5px; font-weight: bold; color: #1f77b4;", "SysDyn_H:"),
+          tags$td(style = "padding: 5px; font-weight: bold; color: #1f77b4;", "SysDyn_H (Total Eq. High Response):"),
           tags$td(style = "padding: 5px; text-align: right;", sprintf("%.2f MW", mean(df$SysDyn_H, na.rm = TRUE)))
         ),
         tags$tr(
@@ -2798,28 +3595,19 @@ server <- function(input, output, session) {
     df[, datetime := Date + minutes((SP - 1) * 30)]
 
     # Define color palette for different metrics
-    color_map <- list(
-      "SysDyn_LP" = "#d62728",
-      "SysDyn_H" = "#1f77b4",
-      "P" = "#2ca02c",
-      "S" = "#ff7f0e",
-      "H" = "#9467bd",
-      "DRL" = "#8c564b",
-      "DRH" = "#e377c2",
-      "DML" = "#7f7f7f",
-      "DMH" = "#bcbd22"
-    )
+    color_map <- response_metric_colors
 
     p <- plot_ly()
 
     # Add traces for each selected metric
     for (metric in input$responseMetrics) {
       if (metric %in% names(df)) {
+        trace_name <- response_metric_label(metric)
         p <- p %>% add_trace(
           data = df,
           x = ~datetime,
           y = as.formula(paste0("~", metric)),
-          name = metric,
+          name = trace_name,
           type = "scatter",
           mode = "lines",
           line = list(color = color_map[[metric]] %||% "#000000", width = 2)
@@ -2835,6 +3623,205 @@ server <- function(input, output, session) {
     )
 
     return(p)
+  })
+
+  # Monthly Response Plot
+  output$responseMonthlyPlot <- renderPlotly({
+    df <- responseData()
+    empty_plot <- function(msg) {
+      plotly_empty(type = "scatter", mode = "text") %>%
+        layout(
+          annotations = list(
+            list(
+              text = msg,
+              showarrow = FALSE,
+              x = 0.5, y = 0.5,
+              xref = "paper", yref = "paper"
+            )
+          ),
+          xaxis = list(title = "Month"),
+          yaxis = list(title = "Response Capacity (MW)")
+        )
+    }
+
+    if (nrow(df) == 0) {
+      return(empty_plot("No data available for selected range"))
+    }
+
+    metrics_input <- input$responseMonthlyMetrics
+    if (is.null(metrics_input) || length(metrics_input) == 0) {
+      metrics_input <- c("SysDyn_LP", "SysDyn_H")
+    }
+    metrics <- intersect(metrics_input, names(df))
+    if (length(metrics) == 0) {
+      return(empty_plot("Selected metrics not found in dataset"))
+    }
+
+    req(input$responseMonthlyStart, input$responseMonthlyEnd)
+    start_str <- input$responseMonthlyStart
+    end_str <- input$responseMonthlyEnd
+
+    start_month <- suppressWarnings(lubridate::ymd(paste0(start_str, "-01")))
+    end_month <- suppressWarnings(lubridate::ymd(paste0(end_str, "-01")))
+
+    if (is.na(start_month) || is.na(end_month)) {
+      return(empty_plot("Invalid month selection"))
+    }
+    if (start_month > end_month) {
+      return(empty_plot("Start month must be before end month"))
+    }
+
+    df <- copy(df)
+    df[, month_start := floor_date(Date, unit = "month")]
+    df <- df[month_start >= start_month & month_start <= end_month]
+    if (nrow(df) == 0) {
+      return(empty_plot("No data available for the selected month range"))
+    }
+
+    monthly_summary <- df[, lapply(.SD, mean, na.rm = TRUE), by = month_start, .SDcols = metrics]
+    if (nrow(monthly_summary) == 0) {
+      return(empty_plot("No monthly aggregates available"))
+    }
+
+    monthly_long <- melt(
+      monthly_summary,
+      id.vars = "month_start",
+      variable.name = "metric",
+      value.name = "value"
+    )
+    monthly_long <- monthly_long[!is.na(value)]
+
+    if (nrow(monthly_long) == 0) {
+      return(empty_plot("Monthly aggregates contain no data"))
+    }
+
+    setorder(monthly_long, month_start)
+    color_map <- response_metric_colors
+
+    p <- plot_ly()
+    for (metric_name in unique(monthly_long$metric)) {
+      metric_data <- monthly_long[metric == metric_name]
+      trace_name <- response_metric_label(metric_name)
+      p <- p %>% add_trace(
+        data = metric_data,
+        x = ~month_start,
+        y = ~value,
+        name = trace_name,
+        type = "scatter",
+        mode = "lines+markers",
+        line = list(color = color_map[[metric_name]] %||% "#000000", width = 2),
+        marker = list(size = 6)
+      )
+    }
+
+    p %>% layout(
+      xaxis = list(title = "Month"),
+      yaxis = list(title = "Average Response Capacity (MW)"),
+      legend = list(orientation = "h", x = 0.5, y = -0.2, xanchor = "center"),
+      hovermode = "x unified"
+    )
+  })
+
+  output$responseWeeklyPlot <- renderPlotly({
+    df <- responseData()
+    empty_plot <- function(msg) {
+      plotly_empty(type = "scatter", mode = "text") %>%
+        layout(
+          annotations = list(
+            list(
+              text = msg,
+              showarrow = FALSE,
+              x = 0.5, y = 0.5,
+              xref = "paper", yref = "paper"
+            )
+          ),
+          xaxis = list(title = "Week Starting"),
+          yaxis = list(title = "Response Capacity (MW)")
+        )
+    }
+
+    if (nrow(df) == 0) {
+      return(empty_plot("No data available for selected range"))
+    }
+
+    metrics_input <- input$responseWeeklyMetrics
+    if (is.null(metrics_input) || length(metrics_input) == 0) {
+      metrics_input <- c("SysDyn_LP", "SysDyn_H")
+    }
+    metrics <- intersect(metrics_input, names(df))
+    if (length(metrics) == 0) {
+      return(empty_plot("Selected metrics not found in dataset"))
+    }
+
+    req(input$responseWeeklyStart, input$responseWeeklyEnd)
+    start_str <- input$responseWeeklyStart
+    end_str <- input$responseWeeklyEnd
+
+    start_week <- suppressWarnings(lubridate::ymd(start_str))
+    end_week <- suppressWarnings(lubridate::ymd(end_str))
+
+    if (is.na(start_week) || is.na(end_week)) {
+      return(empty_plot("Invalid week selection"))
+    }
+    if (start_week > end_week) {
+      return(empty_plot("Start week must be before end week"))
+    }
+
+    df <- copy(df)
+    df[, week_start := floor_date(Date, unit = "week", week_start = 1)]
+    df <- df[week_start >= start_week & week_start <= end_week]
+    if (nrow(df) == 0) {
+      return(empty_plot("No data available for the selected week range"))
+    }
+
+    weekly_summary <- df[, lapply(.SD, mean, na.rm = TRUE), by = week_start, .SDcols = metrics]
+    if (nrow(weekly_summary) == 0) {
+      return(empty_plot("No weekly aggregates available"))
+    }
+
+    weekly_long <- melt(
+      weekly_summary,
+      id.vars = "week_start",
+      variable.name = "metric",
+      value.name = "value"
+    )
+    weekly_long <- weekly_long[!is.na(value)]
+
+    if (nrow(weekly_long) == 0) {
+      return(empty_plot("Weekly aggregates contain no data"))
+    }
+
+    setorder(weekly_long, week_start)
+    weekly_long[, week_label := paste0(
+      format(week_start, "%Y"),
+      "-W",
+      sprintf("%02d", lubridate::isoweek(week_start))
+    )]
+    weekly_long[, week_label := factor(week_label, levels = unique(week_label))]
+    color_map <- response_metric_colors
+
+    p <- plot_ly()
+    for (metric_name in unique(weekly_long$metric)) {
+      metric_data <- weekly_long[metric == metric_name]
+      trace_name <- response_metric_label(metric_name)
+      p <- p %>% add_trace(
+        data = metric_data,
+        x = ~week_label,
+        y = ~value,
+        name = trace_name,
+        type = "scatter",
+        mode = "lines+markers",
+        line = list(color = color_map[[metric_name]] %||% "#000000", width = 2),
+        marker = list(size = 6)
+      )
+    }
+
+    p %>% layout(
+      xaxis = list(title = "ISO Week", type = "category"),
+      yaxis = list(title = "Average Response Capacity (MW)"),
+      legend = list(orientation = "h", x = 0.5, y = -0.2, xanchor = "center"),
+      hovermode = "x unified"
+    )
   })
 
   # Response Data Table
@@ -2881,53 +3868,83 @@ server <- function(input, output, session) {
     return(dt)
   })
 
-  # Dynamic event selector UI
-  output$imbalanceEventSelectUI <- renderUI({
-    req(input$imbalanceEventFilter)
+  filteredImbalanceEvents <- reactive({
     df <- imbalanceSummaryData()
-
-    if (nrow(df) == 0) {
-      return(selectInput("selectedEvent", "Select Event:", choices = c("No events available" = "")))
-    }
-
-    # Filter events based on selection
+    if (nrow(df) == 0) return(df)
     if (input$imbalanceEventFilter == "top10") {
       setorder(df, -severity)
       df <- head(df, 10)
     } else if (input$imbalanceEventFilter == "latest10") {
       setorder(df, -date, -starting_sp)
       df <- head(df, 10)
+    } else {
+      setorder(df, -severity)
     }
+    df
+  })
 
-    # Create event labels and use event_id as the unique identifier
-    df[, event_label := paste0(format(date, "%Y-%m-%d %H:%M"), " SP", starting_sp,
-                                " (Sev: ", sprintf("%.1f", severity), ")")]
+  imbalanceEventIndex <- reactiveVal(1)
 
-    # Use event_id as the value (it's unique and already in the data)
-    event_choices <- setNames(df$event_id, df$event_label)
+  observeEvent(filteredImbalanceEvents(), {
+    imbalanceEventIndex(1)
+  })
 
-    selectInput("selectedEvent", "Select Event:",
-                choices = event_choices,
-                selected = event_choices[1])
+  observeEvent(input$imbalancePrev, {
+    df <- filteredImbalanceEvents()
+    if (nrow(df) == 0) return()
+    imbalanceEventIndex(max(1, imbalanceEventIndex() - 1))
+  })
+
+  observeEvent(input$imbalanceNext, {
+    df <- filteredImbalanceEvents()
+    if (nrow(df) == 0) return()
+    imbalanceEventIndex(min(nrow(df), imbalanceEventIndex() + 1))
+  })
+
+  currentImbalanceEvent <- reactive({
+    df <- filteredImbalanceEvents()
+    if (nrow(df) == 0) return(NULL)
+    idx <- imbalanceEventIndex()
+    idx <- min(max(idx, 1), nrow(df))
+    df[idx]
+  })
+
+  output$imbalanceEventLabel <- renderUI({
+    ev <- currentImbalanceEvent()
+    if (is.null(ev)) {
+      return(div(style = "margin-top: 25px;", tags$em("No events available")))
+    }
+    tags$div(
+      style = "margin-top: 15px;",
+      tags$strong(format(ev$date, "%Y-%m-%d %H:%M")),
+      tags$br(),
+      paste0("SP ", ev$starting_sp, " | Severity ", sprintf("%.1f", ev$severity))
+    )
+  })
+
+  currentImbalanceEventId <- reactive({
+    ev <- currentImbalanceEvent()
+    if (is.null(ev)) return(NA_character_)
+    ev$event_id
   })
 
   # Event Details
 
   # Frequency Event Plot
   output$imbalanceFrequencyPlot <- renderPlotly({
-    req(input$selectedEvent, input$updateImbalancePlot)
+    req(currentImbalanceEventId())
 
     df_detail <- imbalanceDetailData()
 
-    if (nrow(df_detail) == 0 || input$selectedEvent == "") {
+    if (nrow(df_detail) == 0 || is.na(currentImbalanceEventId())) {
       p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5, label = "No data available. Select an event and click 'Load Event Data'.", size = 5) +
+        annotate("text", x = 0.5, y = 0.5, label = "No data available. Adjust filters or use the navigation buttons.", size = 5) +
         theme_void()
       return(ggplotly(p))
     }
 
     # Use event_id to filter for this event
-    event_data <- df_detail[event_id == input$selectedEvent]
+    event_data <- df_detail[event_id == currentImbalanceEventId()]
 
     if (nrow(event_data) == 0) {
       p <- ggplot() +
@@ -2998,19 +4015,19 @@ server <- function(input, output, session) {
 
   # Imbalance Time Series Plot
   output$imbalanceTimeSeriesPlot <- renderPlotly({
-    req(input$selectedEvent, input$updateImbalancePlot)
+    req(currentImbalanceEventId())
 
     df_detail <- imbalanceDetailData()
 
-    if (nrow(df_detail) == 0 || input$selectedEvent == "") {
+    if (nrow(df_detail) == 0 || is.na(currentImbalanceEventId())) {
       p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5, label = "No data available. Select an event and click 'Load Event Data'.", size = 5) +
+        annotate("text", x = 0.5, y = 0.5, label = "No data available. Adjust filters or use the navigation buttons.", size = 5) +
         theme_void()
       return(ggplotly(p))
     }
 
     # Use event_id to filter for this event
-    event_data <- df_detail[event_id == input$selectedEvent]
+    event_data <- df_detail[event_id == currentImbalanceEventId()]
 
     if (nrow(event_data) == 0) {
       p <- ggplot() +
@@ -3052,6 +4069,50 @@ server <- function(input, output, session) {
     return(dt)
   })
 
+  monthlyExcursionFilteredData <- eventReactive(input$updateExcursionMonthly, {
+    df <- monthlyExcursionData()
+    if (!nrow(df)) return(data.table())
+
+    req(input$excursionMonthlyStart, input$excursionMonthlyEnd)
+    start_month <- as.Date(input$excursionMonthlyStart)
+    end_month <- as.Date(input$excursionMonthlyEnd)
+    thresholds <- input$excursionMonthlyThresholds
+    if (is.null(thresholds) || !length(thresholds)) {
+      thresholds <- unique(df$threshold)
+    } else {
+      thresholds <- suppressWarnings(as.numeric(thresholds))
+    }
+
+    if (is.na(start_month) || is.na(end_month) || start_month > end_month) {
+      return(data.table())
+    }
+
+    df <- df[month >= start_month & month <= end_month & threshold %in% thresholds]
+    return(df)
+  }, ignoreNULL = FALSE)
+
+  weeklyExcursionFilteredData <- eventReactive(input$updateExcursionWeekly, {
+    df <- excursionDailyData()
+    if (!nrow(df)) return(data.table())
+
+    req(input$excursionWeeklyStart, input$excursionWeeklyEnd)
+    start_week <- as.Date(input$excursionWeeklyStart)
+    end_week <- as.Date(input$excursionWeeklyEnd)
+    thresholds <- input$excursionWeeklyThresholds
+    if (is.null(thresholds) || !length(thresholds)) {
+      thresholds <- unique(df$threshold)
+    } else {
+      thresholds <- suppressWarnings(as.numeric(thresholds))
+    }
+
+    if (is.na(start_week) || is.na(end_week) || start_week > end_week) {
+      return(data.table())
+    }
+
+    df <- df[date >= start_week & date <= end_week & threshold %in% thresholds]
+    return(df)
+  }, ignoreNULL = FALSE)
+
   # Reactive expression to load monthly imbalance data
   monthlyImbalanceData <- reactive({
     req(file.exists("data/output/reports/monthly_imbalance_summary.csv"))
@@ -3067,461 +4128,43 @@ server <- function(input, output, session) {
     return(dt)
   })
 
-  # --- Unforeseen Demand Tab Logic ---
-
-  # Reactive expression to load unforeseen demand events
-  unforeseenData <- reactive({
-    req(file.exists("data/output/reports/unforeseen_demand_events.csv"))
-    dt <- fread("data/output/reports/unforeseen_demand_events.csv")
-    dt[, Date := as.Date(Date)]
-    return(dt)
-  })
-
-  # Filtered unforeseen demand data
-  filteredUnforeseenData <- reactive({
-    df <- unforeseenData()
-    req(input$unforeseenMetric, input$unforeseenFilter,
-        input$unforeseenStartDate, input$unforeseenEndDate)
-
-    # Date filter
-    df <- df[Date >= input$unforeseenStartDate & Date <= input$unforeseenEndDate]
-
-    # Event type filter
-    flag_col <- paste0("is_unforeseen_", input$unforeseenMetric)
-    if (input$unforeseenFilter == "unforeseen") {
-      df <- df[get(flag_col) == TRUE]
-    } else if (input$unforeseenFilter == "normal") {
-      df <- df[get(flag_col) == FALSE]
-    }
-
-    return(df)
-  })
-
-  # Time Series Plot
-  output$unforeseenTimeSeriesPlot <- renderPlotly({
-    df <- filteredUnforeseenData()
-    metric <- input$unforeseenMetric
-
-    delta_col <- paste0("Delta_", metric)
-    damping_col <- paste0(metric, "_damping")
-    unforeseen_col <- paste0(metric, "_unforeseen")
-    flag_col <- paste0("is_unforeseen_", metric)
-
-    if (nrow(df) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5, label = "No data available for selected filters", size = 6) +
+  excursionMonthlyEmptyPlot <- function(message) {
+    ggplotly(
+      ggplot() +
+        annotate("text", x = 0.5, y = 0.5, label = message, size = 6) +
         theme_void()
-      return(ggplotly(p))
-    }
-
-    # Check if viewing single day or multiple days
-    unique_dates <- unique(df$Date)
-
-    if (length(unique_dates) > 1) {
-      # Multiple days selected - show message
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = paste("Please select a single day to view this plot.\nCurrently showing", length(unique_dates), "days."),
-                 size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Single day view - plot by SP
-    p <- plot_ly(df)
-
-    # Add total change
-    p <- p %>% add_trace(
-      x = ~SP,
-      y = as.formula(paste0("~", delta_col)),
-      name = "Total Change",
-      type = "scatter",
-      mode = "lines+markers",
-      line = list(color = "#1f77b4", width = 1.5),
-      marker = list(color = "#1f77b4", size = 4)
     )
-
-    # Add unforeseen component
-    p <- p %>% add_trace(
-      x = ~SP,
-      y = as.formula(paste0("~", unforeseen_col)),
-      name = "Unforeseen Component",
-      type = "scatter",
-      mode = "markers",
-      marker = list(color = "#d62728", size = 4)
-    )
-
-    # Highlight flagged events
-    df_flagged <- df[get(flag_col) == TRUE]
-    if (nrow(df_flagged) > 0) {
-      p <- p %>% add_trace(
-        data = df_flagged,
-        x = ~SP,
-        y = as.formula(paste0("~", unforeseen_col)),
-        name = "Unforeseen Events",
-        type = "scatter",
-        mode = "markers",
-        marker = list(color = "#ff7f0e", size = 8, symbol = "diamond")
-      )
-    }
-
-    p <- p %>% layout(
-      xaxis = list(title = "Settlement Period (SP)", range = c(0.5, 48.5)),
-      yaxis = list(title = paste(metric, "Change (MW)")),
-      legend = list(x = 0.5, y = -0.15, orientation = "h", xanchor = "center"),
-      hovermode = "x unified"
-    )
-
-    return(p)
-  })
-
-  # Frequency Profile Plot
-  output$unforeseenFrequencyProfilePlot <- renderPlotly({
-    df <- filteredUnforeseenData()
-
-    if (nrow(df) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5, label = "No data available", size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Check if single day
-    unique_dates <- unique(df$Date)
-    if (length(unique_dates) > 1) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = paste("Please select a single day to view this plot.\nCurrently showing", length(unique_dates), "days."),
-                 size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Check if frequency data available
-    if (!"min_f" %in% names(df) || !"max_f" %in% names(df)) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = "No frequency data available for this day",
-                 size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Remove rows with NA frequency data
-    df_freq <- df[!is.na(min_f) & !is.na(max_f)]
-
-    if (nrow(df_freq) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = "No frequency events occurred on this day",
-                 size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Plot frequency range
-    p <- plot_ly(df_freq)
-
-    # Add min frequency
-    p <- p %>% add_trace(
-      x = ~SP,
-      y = ~min_f,
-      name = "Min Frequency",
-      type = "scatter",
-      mode = "lines+markers",
-      line = list(color = "#1f77b4", width = 1.5),
-      marker = list(color = "#1f77b4", size = 4)
-    )
-
-    # Add max frequency
-    p <- p %>% add_trace(
-      x = ~SP,
-      y = ~max_f,
-      name = "Max Frequency",
-      type = "scatter",
-      mode = "lines+markers",
-      line = list(color = "#d62728", width = 1.5),
-      marker = list(color = "#d62728", size = 4)
-    )
-
-    # Add 50 Hz reference line
-    p <- p %>% add_trace(
-      x = c(0.5, 48.5),
-      y = c(50, 50),
-      name = "50 Hz Nominal",
-      type = "scatter",
-      mode = "lines",
-      line = list(color = "gray", width = 1, dash = "dash")
-    )
-
-    p <- p %>% layout(
-      xaxis = list(title = "Settlement Period (SP)", range = c(0.5, 48.5)),
-      yaxis = list(title = "Frequency (Hz)"),
-      legend = list(x = 0.5, y = -0.15, orientation = "h", xanchor = "center"),
-      hovermode = "x unified"
-    )
-
-    return(p)
-  })
-
-  # SP Frequency Event Categories Plot
-  output$unforeseenVsFreqCategoryPlot <- renderPlotly({
-    df <- filteredUnforeseenData()
-
-    if (nrow(df) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5, label = "No data available", size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Check if single day
-    unique_dates <- unique(df$Date)
-    if (length(unique_dates) > 1) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = paste("Please select a single day to view this plot.\nCurrently showing", length(unique_dates), "days."),
-                 size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Check if frequency data available
-    if (!"min_f" %in% names(df) || !"category" %in% names(df)) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = "No frequency data available for this day",
-                 size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Remove rows with NA frequency data
-    df_freq <- df[!is.na(min_f) & !is.na(max_f)]
-
-    if (nrow(df_freq) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = "No frequency events occurred on this day",
-                 size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Calculate average frequency
-    df_freq[, avg_f := (min_f + max_f) / 2]
-
-    # Map category to color
-    df_freq[, color := fcase(
-      category == "Red", "#d62728",
-      category == "Green", "#2ca02c",
-      category == "Tuning", "#9467bd",
-      default = "#cccccc"
-    )]
-
-    p <- plot_ly(df_freq) %>%
-      add_trace(x = ~SP, y = ~avg_f, type = "scatter", mode = "lines",
-                line = list(color = "black", width = 1), showlegend = FALSE) %>%
-      add_trace(x = ~SP, y = ~avg_f, type = "scatter", mode = "markers",
-                marker = list(size = 8, color = ~color),
-                text = ~paste("SP:", SP, "<br>Avg Freq:", round(avg_f, 3), "Hz<br>Category:", category),
-                hoverinfo = "text", showlegend = FALSE) %>%
-      layout(
-        xaxis = list(title = "Settlement Period (SP)", range = c(0.5, 48.5)),
-        yaxis = list(title = "Frequency (Hz)")
-      )
-
-    return(p)
-  })
-
-  # Data Table
-  output$unforeseenDataTable <- DT::renderDataTable({
-    df <- filteredUnforeseenData()
-    metric <- input$unforeseenMetric
-
-    if (nrow(df) == 0) return(data.table())
-
-    display_cols <- c("Date", "SP", "Hour",
-                      paste0("Delta_", metric),
-                      paste0(metric, "_damping"),
-                      paste0(metric, "_unforeseen"),
-                      paste0("is_unforeseen_", metric),
-                      paste0(metric, "_event_severity"),
-                      "abs_freq_change", "trend", "causality")
-
-    df_display <- df[, .SD, .SDcols = intersect(display_cols, names(df))]
-
-    datatable(df_display,
-              options = list(pageLength = 15, scrollX = TRUE),
-              rownames = FALSE,
-              filter = 'top') %>%
-      formatRound(columns = intersect(c(paste0("Delta_", metric),
-                                        paste0(metric, "_damping"),
-                                        paste0(metric, "_unforeseen"),
-                                        paste0(metric, "_event_severity"),
-                                        "abs_freq_change"),
-                                      names(df_display)), digits = 2)
-  })
-
-  # --- Unforeseen Patterns Tab Logic ---
-
-  # Filtered patterns data
-  filteredPatternsData <- eventReactive(input$updatePatternsPlots, {
-    df <- unforeseenData()
-    metric <- input$patternsMetric
-
-    # Filter by date range
-    df <- df[Date >= input$patternsStartDate & Date <= input$patternsEndDate]
-
-    # Only keep flagged events
-    flag_col <- paste0("is_unforeseen_", metric)
-    if (flag_col %in% names(df)) {
-      df <- df[get(flag_col) == TRUE]
-    }
-
-    return(df)
-  }, ignoreNULL = FALSE)
-
-  # Panel 1: Hourly Bar Chart
-  output$patternsHourlyBarPlot <- renderPlotly({
-    df <- filteredPatternsData()
-    metric <- input$patternsMetric
-
-    if (nrow(df) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = "No unforeseen events in selected date range",
-                 size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Count events per hour
-    hourly_counts <- df[, .(count = .N), by = Hour]
-
-    # Ensure all hours 0-23 are represented
-    all_hours <- data.table(Hour = 0:23)
-    hourly_counts <- merge(all_hours, hourly_counts, by = "Hour", all.x = TRUE)
-    hourly_counts[is.na(count), count := 0]
-
-    setorder(hourly_counts, Hour)
-
-    # Create bar chart
-    p <- plot_ly(hourly_counts, x = ~Hour, y = ~count,
-                 type = "bar",
-                 marker = list(color = "#d62728"),
-                 text = ~paste("Hour:", Hour, "<br>Events:", count),
-                 textposition = "none",
-                 hoverinfo = "text") %>%
-      layout(
-        xaxis = list(title = "Hour of Day", dtick = 1),
-        yaxis = list(title = "Total Unforeseen Events"),
-        hovermode = "x"
-      )
-
-    return(p)
-  })
-
-  # Panel 2: Heatmap
-  output$patternsHeatmapPlot <- renderPlotly({
-    df <- filteredPatternsData()
-    metric <- input$patternsMetric
-
-    if (nrow(df) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = "No unforeseen events in selected date range",
-                 size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Count events per date and hour
-    heatmap_data <- df[, .(count = .N), by = .(Date, Hour)]
-
-    # Create complete grid
-    all_dates <- seq(input$patternsStartDate, input$patternsEndDate, by = "day")
-    all_hours <- 0:23
-    complete_grid <- data.table(expand.grid(Date = all_dates, Hour = all_hours))
-
-    # Merge with actual data
-    heatmap_data <- merge(complete_grid, heatmap_data, by = c("Date", "Hour"), all.x = TRUE)
-    heatmap_data[is.na(count), count := 0]
-
-    # Convert to matrix
-    heatmap_matrix <- dcast(heatmap_data, Date ~ Hour, value.var = "count")
-    dates_vector <- heatmap_matrix$Date
-    heatmap_matrix[, Date := NULL]
-    heatmap_matrix <- as.matrix(heatmap_matrix)
-
-    # Create heatmap
-    p <- plot_ly(
-      x = all_hours,
-      y = dates_vector,
-      z = heatmap_matrix,
-      type = "heatmap",
-      colorscale = "Reds",
-      colorbar = list(title = "Events"),
-      hovertemplate = paste(
-        "Date: %{y|%Y-%m-%d}<br>",
-        "Hour: %{x}<br>",
-        "Events: %{z}<br>",
-        "<extra></extra>"
-      )
-    ) %>%
-      layout(
-        xaxis = list(title = "Hour of Day", dtick = 1),
-        yaxis = list(title = "Date", autorange = "reversed")
-      )
-
-    return(p)
-  })
-
-  # Panel 3: Time Series with Hour Filter
-  output$patternsTimeSeriesPlot <- renderPlotly({
-    df <- filteredPatternsData()
-    metric <- input$patternsMetric
-    hour_filter <- input$patternsHourFilter
-
-    if (nrow(df) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = "No unforeseen events in selected date range",
-                 size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Filter by hour if not "all"
-    if (hour_filter != "all") {
-      df <- df[Hour == as.integer(hour_filter)]
-    }
-
-    # Count events per date
-    daily_counts <- df[, .(count = .N), by = Date]
-
-    # Ensure all dates in range are represented
-    all_dates <- seq(input$patternsStartDate, input$patternsEndDate, by = "day")
-    complete_dates <- data.table(Date = all_dates)
-    daily_counts <- merge(complete_dates, daily_counts, by = "Date", all.x = TRUE)
-    daily_counts[is.na(count), count := 0]
-
-    setorder(daily_counts, Date)
-
-    # Create bar chart
-    p <- plot_ly(daily_counts, x = ~Date, y = ~count,
-                 type = "bar",
-                 marker = list(color = "#1f77b4")) %>%
-      layout(
-        xaxis = list(title = "Date"),
-        yaxis = list(title = "Unforeseen Events Count"),
-        hovermode = "x"
-      )
-
-    return(p)
-  })
+  }
 
   # --- KPI Tab Logic ---
+
+  kpiMonthlyFilteredData <- eventReactive(input$updateKpiMonthlyPlot, {
+    df <- kpiData()
+    req(input$kpiMonthlyStartDate, input$kpiMonthlyEndDate)
+    start_date <- as.Date(input$kpiMonthlyStartDate)
+    end_date <- as.Date(input$kpiMonthlyEndDate)
+    if (is.na(start_date) || is.na(end_date)) {
+      return(df[0])
+    }
+    if (start_date > end_date) {
+      return(df[0])
+    }
+    df[date >= start_date & date <= end_date]
+  }, ignoreNULL = FALSE)
+
+  kpiWeeklyFilteredData <- eventReactive(input$updateKpiWeeklyPlot, {
+    df <- kpiData()
+    req(input$kpiWeeklyStartDate, input$kpiWeeklyEndDate)
+    start_date <- as.Date(input$kpiWeeklyStartDate)
+    end_date <- as.Date(input$kpiWeeklyEndDate)
+    if (is.na(start_date) || is.na(end_date)) {
+      return(df[0])
+    }
+    if (start_date > end_date) {
+      return(df[0])
+    }
+    df[date >= start_date & date <= end_date]
+  }, ignoreNULL = FALSE)
 
   # Filtered KPI data based on selected filter mode
   filteredKPIData <- eventReactive(input$updateKPIPlots, {
@@ -3667,7 +4310,6 @@ server <- function(input, output, session) {
   monthlyFilteredData <- eventReactive(input$updateMonthlyPlots, {
     list(
       events = eventData(),
-      unforeseen = unforeseenData(),
       system = systemData(),
       kpi = kpiData(),
       excursions = monthlyExcursionData(),
@@ -3679,56 +4321,63 @@ server <- function(input, output, session) {
     )
   }, ignoreNULL = FALSE)
 
-  # Panel 1: Monthly Quality Metrics Time Series (KPI Categories)
+  # Monthly Frequency KPI (moved to KPI tab)
   output$monthlyQualityMetrics <- renderPlotly({
-    data <- monthlyFilteredData()
-    df <- data$kpi
+    df <- kpiMonthlyFilteredData()
+    start_date <- suppressWarnings(as.Date(input$kpiMonthlyStartDate))
+    end_date <- suppressWarnings(as.Date(input$kpiMonthlyEndDate))
+    selected_categories <- input$kpiMonthlyCategories
+
+    empty_plot <- function(msg) {
+      ggplotly(
+        ggplot() +
+          annotate("text", x = 0.5, y = 0.5, label = msg, size = 6) +
+          theme_void()
+      )
+    }
+
+    if (!is.na(start_date) && !is.na(end_date) && start_date > end_date) {
+      return(empty_plot("Start month must be before end month."))
+    }
 
     if (is.null(df) || nrow(df) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = "No KPI data available", size = 6) +
-        theme_void()
-      return(ggplotly(p))
+      return(empty_plot("No KPI data available for selected range"))
     }
 
-    # Filter by date range
-    df_filtered <- df[date >= data$start_date & date <= data$end_date]
-
-    if (nrow(df_filtered) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = "No data in selected date range", size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Extract year-month
-    df_filtered[, month := format(date, "%Y-%m")]
-
-    # Calculate monthly average percentages for each quality category
-    monthly_kpi <- df_filtered[, .(
+    df[, month := format(date, "%Y-%m")]
+    monthly_kpi <- df[, .(
       Red = mean(percentage_red, na.rm = TRUE),
       Amber = mean(percentage_amber, na.rm = TRUE),
       Blue = mean(percentage_blue, na.rm = TRUE),
       Green = mean(percentage_green, na.rm = TRUE)
     ), by = month]
 
-    # Reshape to long format for plotting
-    monthly_kpi_long <- melt(monthly_kpi, id.vars = "month",
-                             variable.name = "Category",
-                             value.name = "Percentage")
+    if (nrow(monthly_kpi) == 0) {
+      return(empty_plot("No data in selected date range"))
+    }
 
-    # Order months chronologically
+    monthly_kpi_long <- melt(
+      monthly_kpi,
+      id.vars = "month",
+      variable.name = "Category",
+      value.name = "Percentage"
+    )
     monthly_kpi_long <- monthly_kpi_long[order(month)]
 
-    # Create time series line plot
+    if (is.null(selected_categories) || length(selected_categories) == 0) {
+      return(empty_plot("Please select at least one quality category."))
+    }
+    monthly_kpi_long <- monthly_kpi_long[Category %in% selected_categories]
+    if (nrow(monthly_kpi_long) == 0) {
+      return(empty_plot("Selected categories have no data in this range."))
+    }
+
     p <- ggplot(monthly_kpi_long, aes(x = month, y = Percentage, color = Category, group = Category)) +
       geom_line(linewidth = 1.2) +
       geom_point(size = 3) +
       scale_color_manual(
         name = "Quality Category",
-        values = c("Red" = "#d62728", "Amber" = "#ff7f0e", "Blue" = "#1f77b4", "Green" = "#2ca02c")
+        values = c("Red" = "#d62728", "Amber" = "#ff7f0e", "Blue" = "#1f77b4", "Green" = "#2ca02c")[selected_categories]
       ) +
       labs(
         x = "Month",
@@ -3748,6 +4397,255 @@ server <- function(input, output, session) {
         yaxis = list(title = "Average Percentage (%)"),
         legend = list(orientation = "v", x = 1.02, y = 0.5)
       )
+  })
+
+  output$weeklyQualityMetrics <- renderPlotly({
+    df <- kpiWeeklyFilteredData()
+    start_date <- suppressWarnings(as.Date(input$kpiWeeklyStartDate))
+    end_date <- suppressWarnings(as.Date(input$kpiWeeklyEndDate))
+    selected_categories <- input$kpiWeeklyCategories
+
+    empty_plot <- function(msg) {
+      ggplotly(
+        ggplot() +
+          annotate("text", x = 0.5, y = 0.5, label = msg, size = 6) +
+          theme_void()
+      )
+    }
+
+    if (!is.na(start_date) && !is.na(end_date) && start_date > end_date) {
+      return(empty_plot("Start week must be before end week."))
+    }
+    if (is.null(df) || nrow(df) == 0) {
+      return(empty_plot("No KPI data available for selected range"))
+    }
+
+    df[, week_start := lubridate::floor_date(date, unit = "week", week_start = 1)]
+    weekly_kpi <- df[, .(
+      Red = mean(percentage_red, na.rm = TRUE),
+      Amber = mean(percentage_amber, na.rm = TRUE),
+      Blue = mean(percentage_blue, na.rm = TRUE),
+      Green = mean(percentage_green, na.rm = TRUE)
+    ), by = week_start]
+
+    if (nrow(weekly_kpi) == 0) {
+      return(empty_plot("No data in selected date range"))
+    }
+
+    weekly_kpi_long <- melt(
+      weekly_kpi,
+      id.vars = "week_start",
+      variable.name = "Category",
+      value.name = "Percentage"
+    )
+    setorder(weekly_kpi_long, week_start)
+
+    if (is.null(selected_categories) || length(selected_categories) == 0) {
+      return(empty_plot("Please select at least one quality category."))
+    }
+    weekly_kpi_long <- weekly_kpi_long[Category %in% selected_categories]
+    if (nrow(weekly_kpi_long) == 0) {
+      return(empty_plot("Selected categories have no data in this range."))
+    }
+
+    week_breaks <- sort(unique(weekly_kpi_long$week_start))
+    if (length(week_breaks) > 14) {
+      step <- ceiling(length(week_breaks) / 14)
+      week_breaks <- week_breaks[seq(1, length(week_breaks), by = step)]
+    }
+    label_fun <- function(x) paste0("W", format(x, "%V"), "\n", format(x, "%d %b"))
+
+    p <- ggplot(weekly_kpi_long, aes(x = week_start, y = Percentage, color = Category, group = Category)) +
+      geom_line(linewidth = 1.1) +
+      geom_point(size = 2.5) +
+      scale_color_manual(
+        name = "Quality Category",
+        values = c("Red" = "#d62728", "Amber" = "#ff7f0e", "Blue" = "#1f77b4", "Green" = "#2ca02c")[selected_categories]
+      ) +
+      scale_x_date(breaks = week_breaks, labels = label_fun) +
+      labs(
+        x = "Week Starting",
+        y = "Average Percentage (%)"
+      ) +
+      theme_minimal(base_size = 11) +
+      theme(
+        legend.position = "bottom",
+        axis.text.x = element_text(angle = 45, hjust = 1)
+      )
+
+    ggplotly(p, tooltip = c("x", "y", "colour")) %>%
+      layout(
+        xaxis = list(
+          title = "Week Starting",
+          tickformat = "%Y-W%V",
+          tickangle = -45
+        ),
+        yaxis = list(title = "Average Percentage (%)"),
+        legend = list(orientation = "h", x = 0.2, y = -0.2)
+      )
+  })
+
+  output$excursionMonthlyCountPlot <- renderPlotly({
+    df <- monthlyExcursionFilteredData()
+    if (is.null(df) || nrow(df) == 0) {
+      return(excursionMonthlyEmptyPlot("No excursion data for selected range"))
+    }
+
+    df <- copy(df)
+    df[, month_label := format(month, "%Y-%m")]
+    df[, month_label := factor(month_label, levels = unique(month_label))]
+    df[, threshold_label := sprintf(">= %.2f Hz", threshold)]
+
+    color_levels <- unique(df$threshold)
+    color_map <- setNames(sapply(color_levels, getExcursionColor), sprintf(">= %.2f Hz", color_levels))
+
+    p <- ggplot(df, aes(x = month_label, y = num_excursions, color = threshold_label, group = threshold_label)) +
+      geom_line(linewidth = 1.1) +
+      geom_point(size = 3) +
+      scale_color_manual(values = color_map, name = "Threshold") +
+      labs(x = "Month", y = "Number of Excursions") +
+      theme_minimal(base_size = 11) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+    ggplotly(p, tooltip = c("x", "y", "colour")) %>%
+      layout(
+        xaxis = list(title = "Month"),
+        yaxis = list(title = "Number of Excursions"),
+        legend = list(orientation = "h", x = 0.5, y = -0.25, xanchor = "center")
+      )
+  })
+
+  output$excursionMonthlyDurationPlot <- renderPlotly({
+    df <- monthlyExcursionFilteredData()
+    if (is.null(df) || nrow(df) == 0) {
+      return(excursionMonthlyEmptyPlot("No excursion data for selected range"))
+    }
+
+    df <- copy(df)
+    df[, month_label := format(month, "%Y-%m")]
+    df[, month_label := factor(month_label, levels = unique(month_label))]
+    df[, threshold_label := sprintf(">= %.2f Hz", threshold)]
+    df[, duration_hours := total_duration_sec / 3600]
+
+    color_levels <- unique(df$threshold)
+    color_map <- setNames(sapply(color_levels, getExcursionColor), sprintf(">= %.2f Hz", color_levels))
+
+    p <- ggplot(df, aes(x = month_label, y = duration_hours, color = threshold_label, group = threshold_label)) +
+      geom_line(linewidth = 1.1) +
+      geom_point(size = 3) +
+      scale_color_manual(values = color_map, name = "Threshold") +
+      labs(x = "Month", y = "Duration (hours)") +
+      theme_minimal(base_size = 11) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+    ggplotly(p, tooltip = c("x", "y", "colour")) %>%
+      layout(
+        xaxis = list(title = "Month"),
+        yaxis = list(title = "Duration (hours)"),
+        legend = list(orientation = "h", x = 0.5, y = -0.25, xanchor = "center")
+      )
+  })
+
+  output$excursionMonthlyPercentagePlot <- renderPlotly({
+    df <- monthlyExcursionFilteredData()
+    if (is.null(df) || nrow(df) == 0) {
+      return(excursionMonthlyEmptyPlot("No excursion data for selected range"))
+    }
+
+    df <- copy(df)
+    df[, month_label := format(month, "%Y-%m")]
+    df[, month_label := factor(month_label, levels = unique(month_label))]
+    df[, threshold_label := sprintf(">= %.2f Hz", threshold)]
+    df[, total_seconds := lubridate::days_in_month(month) * 24 * 3600]
+    df[, pct_time := pmin(100, (total_duration_sec / total_seconds) * 100)]
+
+    color_levels <- unique(df$threshold)
+    color_map <- setNames(sapply(color_levels, getExcursionColor), sprintf(">= %.2f Hz", color_levels))
+
+    p <- ggplot(df, aes(x = month_label, y = pct_time, color = threshold_label, group = threshold_label)) +
+      geom_line(linewidth = 1.1) +
+      geom_point(size = 3) +
+      scale_color_manual(values = color_map, name = "Threshold") +
+      labs(x = "Month", y = "Percentage of Time (%)") +
+      theme_minimal(base_size = 11) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+    ggplotly(p, tooltip = c("x", "y", "colour")) %>%
+      layout(
+        xaxis = list(title = "Month"),
+        yaxis = list(title = "Percentage of Time (%)"),
+        legend = list(orientation = "h", x = 0.5, y = -0.25, xanchor = "center")
+      )
+  })
+
+  buildWeeklyExcursionPlot <- function(df, value_col, y_label) {
+    if (is.null(df) || nrow(df) == 0) {
+      return(excursionMonthlyEmptyPlot("No excursion data for selected range"))
+    }
+
+    df <- copy(df)
+    df[, week_start := lubridate::floor_date(date, unit = "week", week_start = 1)]
+    df_summary <- df[, .(
+      num_excursions = sum(num_excursions, na.rm = TRUE),
+      total_duration_sec = sum(total_duration_sec, na.rm = TRUE),
+      days = .N
+    ), by = .(week_start, threshold)]
+
+    if (nrow(df_summary) == 0) {
+      return(excursionMonthlyEmptyPlot("No excursion data for selected range"))
+    }
+
+    df_summary[, duration_hours := total_duration_sec / 3600]
+    df_summary[, pct_time := pmin(100, (total_duration_sec / (days * 24 * 3600)) * 100)]
+
+    df_summary[, threshold_label := sprintf(">= %.2f Hz", threshold)]
+
+    draw_df <- df_summary[, .(week_start, threshold_label, value = get(value_col)), by = .(week_start, threshold_label)]
+    draw_df <- draw_df[!is.na(value)]
+    if (nrow(draw_df) == 0) {
+      return(excursionMonthlyEmptyPlot("No excursion data for selected metric"))
+    }
+
+    color_levels <- unique(df_summary$threshold)
+    color_map <- setNames(sapply(color_levels, getExcursionColor), sprintf(">= %.2f Hz", color_levels))
+
+    week_breaks <- sort(unique(draw_df$week_start))
+    if (length(week_breaks) > 14) {
+      step <- ceiling(length(week_breaks) / 14)
+      week_breaks <- week_breaks[seq(1, length(week_breaks), by = step)]
+    }
+    label_fun <- function(x) paste0("W", format(x, "%V"), "\n", format(x, "%d %b"))
+
+    p <- ggplot(draw_df, aes(x = week_start, y = value, color = threshold_label, group = threshold_label)) +
+      geom_line(linewidth = 1.1) +
+      geom_point(size = 2.8) +
+      scale_color_manual(values = color_map, name = "Threshold") +
+      scale_x_date(breaks = week_breaks, labels = label_fun) +
+      labs(x = "Week Starting", y = y_label) +
+      theme_minimal(base_size = 11) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+    ggplotly(p, tooltip = c("x", "y", "colour")) %>%
+      layout(
+        xaxis = list(title = "Week Starting"),
+        yaxis = list(title = y_label),
+        legend = list(orientation = "h", x = 0.5, y = -0.25, xanchor = "center")
+      )
+  }
+
+  output$excursionWeeklyCountPlot <- renderPlotly({
+    df <- weeklyExcursionFilteredData()
+    buildWeeklyExcursionPlot(df, "num_excursions", "Number of Excursions")
+  })
+
+  output$excursionWeeklyDurationPlot <- renderPlotly({
+    df <- weeklyExcursionFilteredData()
+    buildWeeklyExcursionPlot(df, "duration_hours", "Duration (hours)")
+  })
+
+  output$excursionWeeklyPercentagePlot <- renderPlotly({
+    df <- weeklyExcursionFilteredData()
+    buildWeeklyExcursionPlot(df, "pct_time", "Percentage of Time (%)")
   })
 
   # Panel 2: Monthly Frequency Excursion Percentage by Threshold
@@ -3802,94 +4700,6 @@ server <- function(input, output, session) {
           ">= 0.1 Hz" = "#1f77b4",
           ">= 0.15 Hz" = "#ff7f0e",
           ">= 0.2 Hz" = "#d62728"
-        )
-      ) +
-      labs(
-        x = "Month",
-        y = "Percentage of Time (%)"
-      ) +
-      theme_minimal(base_size = 12) +
-      theme(
-        legend.position = "right",
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        panel.grid.major = element_line(color = "gray90"),
-        panel.grid.minor = element_blank()
-      )
-
-    ggplotly(p, tooltip = c("x", "y", "colour")) %>%
-      layout(
-        xaxis = list(title = "Month"),
-        yaxis = list(title = "Percentage of Time (%)"),
-        legend = list(orientation = "v", x = 1.02, y = 0.5)
-      )
-  })
-
-  # Panel 3: Monthly Excursion Percentage by Direction (Positive vs Negative)
-  output$monthlyDemand <- renderPlotly({
-    data <- monthlyFilteredData()
-
-    # Load actual frequency per second data
-    req(file.exists("data/processed/frequency_per_second_with_rocof.csv"))
-    freq_data <- fread("data/processed/frequency_per_second_with_rocof.csv")
-
-    if (nrow(freq_data) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = "No frequency data available", size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Parse datetime and filter by date range
-    freq_data[, dtm := as.POSIXct(dtm_sec, format = "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")]
-    freq_data[, date := as.Date(dtm)]
-    freq_data[, month := format(date, "%Y-%m")]
-
-    df_filtered <- freq_data[date >= data$start_date & date <= data$end_date]
-
-    if (nrow(df_filtered) == 0) {
-      p <- ggplot() +
-        annotate("text", x = 0.5, y = 0.5,
-                 label = "No data in selected date range", size = 6) +
-        theme_void()
-      return(ggplotly(p))
-    }
-
-    # Calculate deviation from 50 Hz
-    df_filtered[, deviation := f - 50.0]
-
-    # Calculate monthly percentages based on seconds of time
-    monthly_excursions <- df_filtered[, .(
-      total_seconds = .N,
-      pos_015 = sum(deviation > 0.15, na.rm = TRUE),
-      neg_015 = sum(deviation < -0.15, na.rm = TRUE)
-    ), by = month]
-
-    # Calculate percentages
-    monthly_excursions[, `:=`(
-      `Positive (>50.15 Hz)` = (pos_015 / total_seconds) * 100,
-      `Negative (<49.85 Hz)` = (neg_015 / total_seconds) * 100
-    )]
-
-    # Reshape to long format
-    excursion_long <- melt(monthly_excursions,
-                           id.vars = "month",
-                           measure.vars = c("Positive (>50.15 Hz)", "Negative (<49.85 Hz)"),
-                           variable.name = "Category",
-                           value.name = "Percentage")
-
-    # Order chronologically
-    excursion_long <- excursion_long[order(month)]
-
-    # Create time series line plot
-    p <- ggplot(excursion_long, aes(x = month, y = Percentage, color = Category, group = Category)) +
-      geom_line(linewidth = 1.2) +
-      geom_point(size = 3) +
-      scale_color_manual(
-        name = "Excursion Direction",
-        values = c(
-          "Positive (>50.15 Hz)" = "#d62728",
-          "Negative (<49.85 Hz)" = "#1f77b4"
         )
       ) +
       labs(

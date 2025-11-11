@@ -32,7 +32,7 @@ process_frequency_data <- function(raw_freq_dt, config) {
   # Create a new column by flooring the timestamp to the second
   raw_freq_dt[, dtm_sec := floor_date(dtm, "second")]
   
-  # Calculate the mean frequency for each second. data.table is highly efficient here.
+  # Calculate the mean frequency for each second.
   processed_dt <- raw_freq_dt[, .(f = mean(f, na.rm = TRUE)), by = dtm_sec]
   setorder(processed_dt, dtm_sec)
   
