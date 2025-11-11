@@ -794,23 +794,31 @@ ui <- dashboardPage(
                   br(),
                   fluidRow(
                     box(
-                      title = "Filter by Date Range", status = "warning", solidHeader = TRUE, width = 12,
+                      title = "Select Date", status = "warning", solidHeader = TRUE, width = 12,
                       tags$style(HTML("
                         .box-body { overflow: visible !important; }
                         .datepicker { z-index: 9999 !important; }
                       ")),
                       fluidRow(
                         column(3,
-                               dateInput("excursionStartDate", "Start Date:",
+                               dateInput("excursionDailyDate", "Date:",
                                          value = as.Date("2025-01-01"),
                                          min = as.Date("2025-01-01"),
                                          max = as.Date("2025-09-30"))
                         ),
                         column(3,
-                               dateInput("excursionEndDate", "End Date:",
-                                         value = as.Date("2025-01-01"),
-                                         min = as.Date("2025-01-01"),
-                                         max = as.Date("2025-09-30"))
+                               tags$label("Navigate Days:", style = "font-weight: bold; margin-bottom: 5px; display: block;"),
+                               div(
+                                 style = "display: flex; gap: 10px; margin-top: 5px;",
+                                 actionButton("excursionDailyPrev", label = NULL,
+                                              icon = icon("chevron-left"),
+                                              class = "btn-default",
+                                              style = "width: 50%;"),
+                                 actionButton("excursionDailyNext", label = NULL,
+                                              icon = icon("chevron-right"),
+                                              class = "btn-default",
+                                              style = "width: 50%;")
+                               )
                         ),
                         column(3,
                                checkboxGroupInput(
@@ -826,7 +834,7 @@ ui <- dashboardPage(
                                             class = "btn-primary",
                                             style = "width: 100%;"),
                                br(),
-                               helpText("Adjust date range or thresholds, then click 'Update Plots'.")
+                               helpText("Use navigation buttons or select date, then click 'Update Plots'.")
                         )
                       )
                     )
@@ -994,6 +1002,228 @@ ui <- dashboardPage(
                         solidHeader = TRUE,
                         width = NULL,
                         plotlyOutput("excursionWeeklyPercentagePlot", height = "420px")
+                      )
+                    )
+                  )
+                ),
+                tabPanel(
+                  title = "Signed Excursions",
+                  tabsetPanel(
+                    id = "signedExcursionSubtab",
+                    # Daily Sub-tab
+                    tabPanel(
+                      title = "Daily",
+                      br(),
+                      fluidRow(
+                        box(
+                          title = "Select Date", status = "warning", solidHeader = TRUE, width = 12,
+                          tags$style(HTML("
+                            .box-body { overflow: visible !important; }
+                            .datepicker { z-index: 9999 !important; }
+                          ")),
+                          fluidRow(
+                            column(3,
+                                   dateInput("signedExcursionDailyDate", "Date:",
+                                             value = as.Date("2025-01-01"),
+                                             min = as.Date("2025-01-01"),
+                                             max = as.Date("2025-09-30"))
+                            ),
+                            column(3,
+                                   tags$label("Navigate Days:", style = "font-weight: bold; margin-bottom: 5px; display: block;"),
+                                   div(
+                                     style = "display: flex; gap: 10px; margin-top: 5px;",
+                                     actionButton("signedExcursionDailyPrev", label = NULL,
+                                                  icon = icon("chevron-left"),
+                                                  class = "btn-default",
+                                                  style = "width: 50%;"),
+                                     actionButton("signedExcursionDailyNext", label = NULL,
+                                                  icon = icon("chevron-right"),
+                                                  class = "btn-default",
+                                                  style = "width: 50%;")
+                                   )
+                            ),
+                            column(3,
+                                   checkboxGroupInput(
+                                     "signedExcursionThresholds",
+                                     "Thresholds (Hz):",
+                                     choices = c("+0.10" = "0.1", "+0.15" = "0.15", "+0.20" = "0.2",
+                                                 "-0.10" = "-0.1", "-0.15" = "-0.15", "-0.20" = "-0.2"),
+                                     selected = c("0.1", "0.15", "0.2", "-0.1", "-0.15", "-0.2")
+                                   )
+                            ),
+                            column(3,
+                                   br(),
+                                   actionButton("updateSignedExcursionPlots", "Update Plots",
+                                                class = "btn-primary",
+                                                style = "width: 100%;"),
+                                   br(),
+                                   helpText("Use navigation buttons or select date, then click 'Update Plots'.")
+                            )
+                          )
+                        )
+                      ),
+                      fluidRow(
+                        box(
+                          title = "Number of Signed Excursions",
+                          status = "primary", solidHeader = TRUE, width = 12,
+                          plotlyOutput("signedExcursionCountPlot", height = "450px")
+                        )
+                      ),
+                      fluidRow(
+                        box(
+                          title = "Total Duration of Signed Excursions",
+                          status = "info", solidHeader = TRUE, width = 12,
+                          plotlyOutput("signedExcursionDailyDurationPlot", height = "500px")
+                        )
+                      ),
+                      fluidRow(
+                        box(
+                          title = "Percentage of Time in Signed Excursion",
+                          status = "warning", solidHeader = TRUE, width = 12,
+                          plotlyOutput("signedExcursionPercentagePlot", height = "450px")
+                        )
+                      )
+                    ),
+                    # Weekly Sub-tab
+                    tabPanel(
+                      title = "Weekly",
+                      br(),
+                      fluidRow(
+                        box(
+                          title = "Weekly Signed Excursion Filters",
+                          status = "warning",
+                          solidHeader = TRUE,
+                          width = 12,
+                          tags$style(HTML("
+                            .box-body { overflow: visible !important; }
+                            .datepicker { z-index: 9999 !important; }
+                          ")),
+                          fluidRow(
+                            column(3, uiOutput("signedExcursionWeeklyStartUI")),
+                            column(3, uiOutput("signedExcursionWeeklyEndUI")),
+                            column(4,
+                                   checkboxGroupInput(
+                                     "signedExcursionWeeklyThresholds",
+                                     "Thresholds (Hz):",
+                                     choices = c("+0.10" = "0.1", "+0.15" = "0.15", "+0.20" = "0.2",
+                                                 "-0.10" = "-0.1", "-0.15" = "-0.15", "-0.20" = "-0.2"),
+                                     selected = c("0.1", "0.15", "0.2", "-0.1", "-0.15", "-0.2"),
+                                     inline = TRUE
+                                   )
+                            ),
+                            column(2,
+                                   br(),
+                                   actionButton(
+                                     "updateSignedExcursionWeekly",
+                                     "Update Weekly Plots",
+                                     class = "btn-primary",
+                                     style = "width: 100%;"
+                                   )
+                            )
+                          )
+                        )
+                      ),
+                      fluidRow(
+                        box(
+                          title = "Weekly Signed Excursion Count",
+                          status = "primary",
+                          solidHeader = TRUE,
+                          width = 12,
+                          plotlyOutput("signedExcursionWeeklyCountPlot", height = "420px")
+                        )
+                      ),
+                      fluidRow(
+                        column(
+                          width = 6,
+                          box(
+                            title = "Weekly Signed Excursion Duration",
+                            status = "info",
+                            solidHeader = TRUE,
+                            width = NULL,
+                            plotlyOutput("signedExcursionWeeklyDurationPlot", height = "420px")
+                          )
+                        ),
+                        column(
+                          width = 6,
+                          box(
+                            title = "Weekly Signed Excursion Percentage",
+                            status = "success",
+                            solidHeader = TRUE,
+                            width = NULL,
+                            plotlyOutput("signedExcursionWeeklyPercentagePlot", height = "420px")
+                          )
+                        )
+                      )
+                    ),
+                    # Monthly Sub-tab
+                    tabPanel(
+                      title = "Monthly",
+                      br(),
+                      fluidRow(
+                        box(
+                          title = "Monthly Signed Excursion Filters",
+                          status = "warning",
+                          solidHeader = TRUE,
+                          width = 12,
+                          tags$style(HTML("
+                            .box-body { overflow: visible !important; }
+                            .datepicker { z-index: 9999 !important; }
+                          ")),
+                          fluidRow(
+                            column(3, uiOutput("signedExcursionMonthlyStartUI")),
+                            column(3, uiOutput("signedExcursionMonthlyEndUI")),
+                            column(4,
+                                   checkboxGroupInput(
+                                     "signedExcursionMonthlyThresholds",
+                                     "Thresholds (Hz):",
+                                     choices = c("+0.10" = "0.1", "+0.15" = "0.15", "+0.20" = "0.2",
+                                                 "-0.10" = "-0.1", "-0.15" = "-0.15", "-0.20" = "-0.2"),
+                                     selected = c("0.1", "0.15", "0.2", "-0.1", "-0.15", "-0.2"),
+                                     inline = TRUE
+                                   )
+                            ),
+                            column(2,
+                                   br(),
+                                   actionButton(
+                                     "updateSignedExcursionMonthly",
+                                     "Update Monthly Plots",
+                                     class = "btn-primary",
+                                     style = "width: 100%;"
+                                   )
+                            )
+                          )
+                        )
+                      ),
+                      fluidRow(
+                        box(
+                          title = "Monthly Signed Excursion Count",
+                          status = "primary",
+                          solidHeader = TRUE,
+                          width = 12,
+                          plotlyOutput("signedExcursionMonthlyCountPlot", height = "420px")
+                        )
+                      ),
+                      fluidRow(
+                        column(
+                          width = 6,
+                          box(
+                            title = "Monthly Signed Excursion Duration",
+                            status = "info",
+                            solidHeader = TRUE,
+                            width = NULL,
+                            plotlyOutput("signedExcursionMonthlyDurationPlot", height = "420px")
+                          )
+                        ),
+                        column(
+                          width = 6,
+                          box(
+                            title = "Monthly Signed Excursion Percentage",
+                            status = "success",
+                            solidHeader = TRUE,
+                            width = NULL,
+                            plotlyOutput("signedExcursionMonthlyPercentagePlot", height = "420px")
+                          )
+                        )
                       )
                     )
                   )
@@ -2467,13 +2697,13 @@ server <- function(input, output, session) {
     return(dt)
   })
 
-  # Filtered data for Excursion plots
+  # Filtered data for Excursion plots (Daily View - single date only)
   filteredExcursionData <- eventReactive(list(input$updateExcursionPlots, input$excursionThresholds), {
-    req(input$excursionStartDate, input$excursionEndDate)
+    req(input$excursionDailyDate)
 
     daily_df <- excursionDailyData()
 
-    # Filter by date range
+    # Filter by single date
     thresholds <- selectedExcursionThresholds()
     if (!length(thresholds)) {
       return(list(daily = data.table()))
@@ -2481,411 +2711,298 @@ server <- function(input, output, session) {
     if (!"threshold" %in% names(daily_df)) {
       daily_df[, threshold := NA_real_]
     }
-    daily_filtered <- daily_df[date >= input$excursionStartDate &
-                                 date <= input$excursionEndDate &
+    daily_filtered <- daily_df[date == input$excursionDailyDate &
                                  threshold %in% thresholds]
 
     list(daily = daily_filtered)
   }, ignoreNULL = FALSE)
 
-  # Plot 1: Number of Excursions - Daily Time Series
-  output$excursionCountPlot <- renderPlotly({
-    req(input$excursionStartDate, input$excursionEndDate)
+  # Navigation: Previous Day button
+  observeEvent(input$excursionDailyPrev, {
+    current_date <- input$excursionDailyDate
+    if (!is.null(current_date)) {
+      new_date <- current_date - 1
+      # Check bounds
+      if (new_date >= as.Date("2025-01-01")) {
+        updateDateInput(session, "excursionDailyDate", value = new_date)
+      }
+    }
+  })
 
-    # Check if single day selected
-    single_day <- input$excursionStartDate == input$excursionEndDate
+  # Navigation: Next Day button
+  observeEvent(input$excursionDailyNext, {
+    current_date <- input$excursionDailyDate
+    if (!is.null(current_date)) {
+      new_date <- current_date + 1
+      # Check bounds
+      if (new_date <= as.Date("2025-09-30")) {
+        updateDateInput(session, "excursionDailyDate", value = new_date)
+      }
+    }
+  })
+
+  # Plot 1: Number of Excursions per Settlement Period (SP-level bar chart)
+  output$excursionCountPlot <- renderPlotly({
+    req(input$excursionDailyDate)
+
     thresholds <- selectedExcursionThresholds()
     if (!length(thresholds)) {
       return(excursionEmptyPlot("Enable at least one threshold to view excursions.",
                                 "Settlement Period (SP)", "Count of Excursion Events"))
     }
 
-    if (single_day) {
-      # Single day: count excursion events per SP
-      # Load per-second frequency data for the selected day
-      freq_data <- frequencyData()
-      freq_data[, date := as.Date(dtm_sec)]
-      day_freq <- freq_data[date == input$excursionStartDate]
+    # Load per-second frequency data for the selected day
+    freq_data <- frequencyData()
+    freq_data[, date := as.Date(dtm_sec)]
+    day_freq <- freq_data[date == input$excursionDailyDate]
 
-      if (nrow(day_freq) == 0) {
-        return(excursionEmptyPlot("No data available for selected date.",
-                                  "Settlement Period (SP)", "Count of Excursion Events"))
+    if (nrow(day_freq) == 0) {
+      return(excursionEmptyPlot("No data available for selected date.",
+                                "Settlement Period (SP)", "Count of Excursion Events"))
+    }
+
+    # Calculate deviation
+    day_freq[, deviation := abs(f - 50)]
+
+    # Detect excursions for each threshold
+    all_excursions <- list()
+
+    for (threshold in thresholds) {
+      # Mark points exceeding threshold
+      day_freq[, exceeds := deviation >= threshold]
+
+      # Create excursion groups
+      day_freq[, excursion_id := cumsum(c(1, diff(exceeds) != 0))]
+      day_freq[, is_excursion := exceeds == TRUE]
+
+      # Get excursion events with start_time
+      excursions <- day_freq[is_excursion == TRUE, .(
+        start_time = min(dtm_sec)
+      ), by = excursion_id]
+
+      if (nrow(excursions) > 0) {
+        # Calculate starting SP from start_time
+        excursions[, starting_sp := floor(as.numeric(difftime(start_time,
+                                           as.POSIXct(paste0(as.Date(start_time), " 00:00:00"), tz = "UTC"),
+                                           units = "secs")) / 1800) + 1]
+        excursions[, threshold := threshold]
+        all_excursions[[paste0("t", threshold*100)]] <- excursions
       }
+    }
 
-      # Calculate deviation
-      day_freq[, deviation := abs(f - 50)]
+    combined_excursions <- if (length(all_excursions) > 0) {
+      rbindlist(all_excursions, fill = TRUE)
+    } else {
+      data.table(threshold = numeric(), starting_sp = integer())
+    }
 
-      # Detect excursions for each threshold
-      all_excursions <- list()
-
-      for (threshold in thresholds) {
-        # Mark points exceeding threshold
-        day_freq[, exceeds := deviation >= threshold]
-
-        # Create excursion groups
-        day_freq[, excursion_id := cumsum(c(1, diff(exceeds) != 0))]
-        day_freq[, is_excursion := exceeds == TRUE]
-
-        # Get excursion events with start_time
-        excursions <- day_freq[is_excursion == TRUE, .(
-          start_time = min(dtm_sec)
-        ), by = excursion_id]
-
-        if (nrow(excursions) > 0) {
-          # Calculate starting SP from start_time
-          excursions[, starting_sp := floor(as.numeric(difftime(start_time,
-                                             as.POSIXct(paste0(as.Date(start_time), " 00:00:00"), tz = "UTC"),
-                                             units = "secs")) / 1800) + 1]
-          excursions[, threshold := threshold]
-          all_excursions[[paste0("t", threshold*100)]] <- excursions
-        }
-      }
-
-      combined_excursions <- if (length(all_excursions) > 0) {
-        rbindlist(all_excursions, fill = TRUE)
-      } else {
-        data.table(threshold = numeric(), starting_sp = integer())
-      }
-
-      p <- plot_ly()
-      for (thr in thresholds) {
-        sp_series <- data.table(SP = 1:48, value = 0)
-        if (nrow(combined_excursions)) {
-          thr_counts <- combined_excursions[threshold == thr, .N, by = starting_sp]
-          if (nrow(thr_counts)) {
-            setnames(thr_counts, c("SP", "value"))
-            sp_series <- merge(sp_series, thr_counts, by = "SP", all.x = TRUE, suffixes = c("", ".thr"))
-            if ("value.thr" %in% names(sp_series)) {
-              sp_series[, value := value.thr]
-              sp_series[, value.thr := NULL]
-            }
+    p <- plot_ly()
+    for (thr in thresholds) {
+      sp_series <- data.table(SP = 1:48, value = 0)
+      if (nrow(combined_excursions)) {
+        thr_counts <- combined_excursions[threshold == thr, .N, by = starting_sp]
+        if (nrow(thr_counts)) {
+          setnames(thr_counts, c("SP", "value"))
+          sp_series <- merge(sp_series, thr_counts, by = "SP", all.x = TRUE, suffixes = c("", ".thr"))
+          if ("value.thr" %in% names(sp_series)) {
+            sp_series[, value := value.thr]
+            sp_series[, value.thr := NULL]
           }
         }
-        sp_series[is.na(value), value := 0]
-        p <- p %>%
-          add_trace(
-            data = sp_series,
-            x = ~SP,
-            y = ~value,
-            name = sprintf("%.2f Hz", thr),
-            type = "bar",
-            marker = list(color = getExcursionColor(thr))
-          )
       }
-
+      sp_series[is.na(value), value := 0]
       p <- p %>%
-        layout(
-          title = "Number of Excursions per SP",
-          xaxis = list(title = "Settlement Period (SP)", range = c(0.5, 48.5)),
-          yaxis = list(title = "Count of Excursion Events"),
-          legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center"),
-          barmode = "group"
-        )
-
-      return(p)
-
-    } else {
-      # Multi-day: show time series
-      data <- filteredExcursionData()
-      df <- data$daily
-
-      df <- df[threshold %in% thresholds]
-      if (nrow(df) == 0) {
-        return(excursionEmptyPlot("No data available for selected thresholds/date range.",
-                                  "Date", "# Excursions"))
-      }
-
-      # Create plotly with single Y-axis
-      p <- plot_ly()
-
-      for (thr in thresholds) {
-        thr_df <- df[threshold == thr]
-        if (!nrow(thr_df)) next
-        p <- p %>% add_trace(
-          data = thr_df,
-          x = ~date,
-          y = ~num_excursions,
-          name = sprintf("%.2f Hz", thr),
+        add_trace(
+          data = sp_series,
+          x = ~SP,
+          y = ~value,
+          name = sprintf("|Δf| ≥ %.2f Hz", thr),
           type = "bar",
-          marker = list(color = getExcursionColor(thr)),
-          hovertemplate = paste0(
-            "Date: %{x|%b %d, %Y}<br>",
-            sprintf("%.2f Hz: ", thr), "%{y}<br>",
-            "<extra></extra>"
-          )
+          marker = list(color = getExcursionColor(thr))
         )
-      }
+    }
 
-      # Configure layout with single Y-axis
-      p <- p %>% layout(
-        title = "Number of Excursions",
-        xaxis = list(title = "Date"),
-        yaxis = list(title = "Number of Excursions"),
+    p <- p %>%
+      layout(
+        title = "Number of Excursions per SP",
+        xaxis = list(title = "Settlement Period (SP)", range = c(0.5, 48.5)),
+        yaxis = list(title = "Count of Excursion Events"),
         legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center"),
-        hovermode = "x unified"
+        barmode = "group"
       )
 
-      return(p)
-    }
+    return(p)
   })
 
-  # Plot 2: Total Duration - Daily Time Series
+  # Plot 2: Total Duration per Settlement Period (SP-level bar chart)
   output$excursionDailyDurationPlot <- renderPlotly({
-    req(input$excursionStartDate, input$excursionEndDate)
+    req(input$excursionDailyDate)
 
-    # Check if single day selected
-    single_day <- input$excursionStartDate == input$excursionEndDate
     thresholds <- selectedExcursionThresholds()
     if (!length(thresholds)) {
       return(excursionEmptyPlot("Enable at least one threshold to view excursions.",
                                 "Settlement Period (SP)", "Total Duration (seconds)"))
     }
 
-    if (single_day) {
-      # Single day: show total duration per SP
-      freq_data <- frequencyData()
-      freq_data[, date := as.Date(dtm_sec)]
-      day_freq <- freq_data[date == input$excursionStartDate]
+    # Load per-second frequency data for the selected day
+    freq_data <- frequencyData()
+    freq_data[, date := as.Date(dtm_sec)]
+    day_freq <- freq_data[date == input$excursionDailyDate]
 
-      if (nrow(day_freq) == 0) {
-        return(excursionEmptyPlot("No data available for selected date.",
-                                  "Settlement Period (SP)", "Total Duration (seconds)"))
+    if (nrow(day_freq) == 0) {
+      return(excursionEmptyPlot("No data available for selected date.",
+                                "Settlement Period (SP)", "Total Duration (seconds)"))
+    }
+
+    # Calculate deviation
+    day_freq[, deviation := abs(f - 50)]
+
+    # Detect excursions for each threshold
+    all_excursions <- list()
+
+    for (threshold in thresholds) {
+      day_freq[, exceeds := deviation >= threshold]
+      day_freq[, excursion_id := cumsum(c(1, diff(exceeds) != 0))]
+      day_freq[, is_excursion := exceeds == TRUE]
+      excursions <- day_freq[is_excursion == TRUE, .(
+        start_time = min(dtm_sec),
+        duration_sec = .N
+      ), by = excursion_id]
+      if (nrow(excursions) > 0) {
+        excursions[, starting_sp := floor(as.numeric(difftime(start_time,
+                                           as.POSIXct(paste0(as.Date(start_time), " 00:00:00"), tz = "UTC"),
+                                           units = "secs")) / 1800) + 1]
+        excursions[, threshold := threshold]
+        all_excursions[[paste0("t", threshold*100)]] <- excursions
       }
+    }
 
-      # Calculate deviation
-      day_freq[, deviation := abs(f - 50)]
+    combined_excursions <- if (length(all_excursions) > 0) {
+      rbindlist(all_excursions, fill = TRUE)
+    } else {
+      data.table(threshold = numeric(), starting_sp = integer(), duration_sec = numeric())
+    }
 
-      # Detect excursions for each threshold
-      all_excursions <- list()
-
-      for (threshold in thresholds) {
-        day_freq[, exceeds := deviation >= threshold]
-        day_freq[, excursion_id := cumsum(c(1, diff(exceeds) != 0))]
-        day_freq[, is_excursion := exceeds == TRUE]
-        excursions <- day_freq[is_excursion == TRUE, .(
-          start_time = min(dtm_sec),
-          duration_sec = .N
-        ), by = excursion_id]
-        if (nrow(excursions) > 0) {
-          excursions[, starting_sp := floor(as.numeric(difftime(start_time,
-                                             as.POSIXct(paste0(as.Date(start_time), " 00:00:00"), tz = "UTC"),
-                                             units = "secs")) / 1800) + 1]
-          excursions[, threshold := threshold]
-          all_excursions[[paste0("t", threshold*100)]] <- excursions
-        }
-      }
-
-      combined_excursions <- if (length(all_excursions) > 0) {
-        rbindlist(all_excursions, fill = TRUE)
-      } else {
-        data.table(threshold = numeric(), starting_sp = integer(), duration_sec = numeric())
-      }
-
-      p <- plot_ly()
-      for (thr in thresholds) {
-        sp_series <- data.table(SP = 1:48, duration = 0)
-        if (nrow(combined_excursions)) {
-          thr_dur <- combined_excursions[threshold == thr, .(duration = sum(duration_sec)), by = starting_sp]
-          if (nrow(thr_dur)) {
-            setnames(thr_dur, c("SP", "duration"))
-            sp_series <- merge(sp_series, thr_dur, by = "SP", all.x = TRUE, suffixes = c("", ".thr"))
-            if ("duration.thr" %in% names(sp_series)) {
-              sp_series[, duration := duration.thr]
-              sp_series[, duration.thr := NULL]
-            }
+    p <- plot_ly()
+    for (thr in thresholds) {
+      sp_series <- data.table(SP = 1:48, duration = 0)
+      if (nrow(combined_excursions)) {
+        thr_dur <- combined_excursions[threshold == thr, .(duration = sum(duration_sec)), by = starting_sp]
+        if (nrow(thr_dur)) {
+          setnames(thr_dur, c("SP", "duration"))
+          sp_series <- merge(sp_series, thr_dur, by = "SP", all.x = TRUE, suffixes = c("", ".thr"))
+          if ("duration.thr" %in% names(sp_series)) {
+            sp_series[, duration := duration.thr]
+            sp_series[, duration.thr := NULL]
           }
         }
-        sp_series[is.na(duration), duration := 0]
-        p <- p %>% add_trace(
-          data = sp_series,
-          x = ~SP,
-          y = ~duration,
-          name = sprintf("%.2f Hz", thr),
-          type = "bar",
-          marker = list(color = getExcursionColor(thr))
-        )
       }
+      sp_series[is.na(duration), duration := 0]
+      p <- p %>% add_trace(
+        data = sp_series,
+        x = ~SP,
+        y = ~duration,
+        name = sprintf("|Δf| ≥ %.2f Hz", thr),
+        type = "bar",
+        marker = list(color = getExcursionColor(thr))
+      )
+    }
 
-      p <- p %>%
-        layout(
-          title = "Total Duration of Excursions per SP",
-          xaxis = list(title = "Settlement Period (SP)", range = c(0.5, 48.5)),
-          yaxis = list(title = "Total Duration (seconds)"),
-          legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center"),
-          barmode = "group"
-        )
-
-      return(p)
-
-    } else {
-      data <- filteredExcursionData()
-      df <- data$daily
-      df <- df[threshold %in% thresholds]
-      if (nrow(df) == 0) {
-        return(excursionEmptyPlot("No data available for selected thresholds/date range.",
-                                  "Date", "Duration (seconds)"))
-      }
-
-      p <- plot_ly()
-      for (thr in thresholds) {
-        thr_df <- df[threshold == thr]
-        if (!nrow(thr_df)) next
-        p <- p %>% add_trace(
-          data = thr_df,
-          x = ~date,
-          y = ~total_duration_sec,
-          name = sprintf("%.2f Hz", thr),
-          type = "bar",
-          marker = list(color = getExcursionColor(thr)),
-          hovertemplate = paste0(
-            "Date: %{x|%b %d, %Y}<br>",
-            sprintf("%.2f Hz: ", thr), "%{y} sec<br>",
-            "<extra></extra>"
-          )
-        )
-      }
-
-      p <- p %>% layout(
-        title = "Total Duration of Excursions",
-        xaxis = list(title = "Date"),
-        yaxis = list(title = "Duration (seconds)"),
+    p <- p %>%
+      layout(
+        title = "Total Duration of Excursions per SP",
+        xaxis = list(title = "Settlement Period (SP)", range = c(0.5, 48.5)),
+        yaxis = list(title = "Total Duration (seconds)"),
         legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center"),
-        hovermode = "x unified",
         barmode = "group"
       )
 
-      return(p)
-
-    }
+    return(p)
   })
 
 
-  # Percentage of Time Plot
+  # Plot 3: Percentage of Time in Excursion per Settlement Period (SP-level bar chart)
   output$excursionPercentagePlot <- renderPlotly({
-    req(input$excursionStartDate, input$excursionEndDate)
+    req(input$excursionDailyDate)
 
-    single_day <- input$excursionStartDate == input$excursionEndDate
     thresholds <- selectedExcursionThresholds()
     if (!length(thresholds)) {
       return(excursionEmptyPlot("Enable at least one threshold to view excursions.",
                                 "Settlement Period (SP)", "Time in Excursion (%)"))
     }
 
-    if (single_day) {
-      freq_data <- frequencyData()
-      freq_data[, date := as.Date(dtm_sec)]
-      day_freq <- freq_data[date == input$excursionStartDate]
+    # Load per-second frequency data for the selected day
+    freq_data <- frequencyData()
+    freq_data[, date := as.Date(dtm_sec)]
+    day_freq <- freq_data[date == input$excursionDailyDate]
 
-      if (nrow(day_freq) == 0) {
-        return(excursionEmptyPlot("No data available for selected date.",
-                                  "Settlement Period (SP)", "Time in Excursion (%)"))
+    if (nrow(day_freq) == 0) {
+      return(excursionEmptyPlot("No data available for selected date.",
+                                "Settlement Period (SP)", "Time in Excursion (%)"))
+    }
+
+    day_freq[, deviation := abs(f - 50)]
+    all_excursions <- list()
+
+    for (threshold in thresholds) {
+      day_freq[, exceeds := deviation >= threshold]
+      day_freq[, excursion_id := cumsum(c(1, diff(exceeds) != 0))]
+      day_freq[, is_excursion := exceeds == TRUE]
+      excursions <- day_freq[is_excursion == TRUE, .(
+        start_time = min(dtm_sec),
+        duration_sec = .N
+      ), by = excursion_id]
+      if (nrow(excursions) > 0) {
+        excursions[, starting_sp := floor(as.numeric(difftime(start_time,
+                                           as.POSIXct(paste0(as.Date(start_time), " 00:00:00"), tz = "UTC"),
+                                           units = "secs")) / 1800) + 1]
+        excursions[, threshold := threshold]
+        all_excursions[[paste0("t", threshold*100)]] <- excursions
       }
+    }
 
-      day_freq[, deviation := abs(f - 50)]
-      all_excursions <- list()
+    combined_excursions <- if (length(all_excursions) > 0) {
+      rbindlist(all_excursions, fill = TRUE)
+    } else {
+      data.table(threshold = numeric(), starting_sp = integer(), duration_sec = numeric())
+    }
 
-      for (threshold in thresholds) {
-        day_freq[, exceeds := deviation >= threshold]
-        day_freq[, excursion_id := cumsum(c(1, diff(exceeds) != 0))]
-        day_freq[, is_excursion := exceeds == TRUE]
-        excursions <- day_freq[is_excursion == TRUE, .(
-          start_time = min(dtm_sec),
-          duration_sec = .N
-        ), by = excursion_id]
-        if (nrow(excursions) > 0) {
-          excursions[, starting_sp := floor(as.numeric(difftime(start_time,
-                                             as.POSIXct(paste0(as.Date(start_time), " 00:00:00"), tz = "UTC"),
-                                             units = "secs")) / 1800) + 1]
-          excursions[, threshold := threshold]
-          all_excursions[[paste0("t", threshold*100)]] <- excursions
-        }
-      }
-
-      combined_excursions <- if (length(all_excursions) > 0) {
-        rbindlist(all_excursions, fill = TRUE)
-      } else {
-        data.table(threshold = numeric(), starting_sp = integer(), duration_sec = numeric())
-      }
-
-      p <- plot_ly()
-      for (thr in thresholds) {
-        sp_series <- data.table(SP = 1:48, pct = 0)
-        if (nrow(combined_excursions)) {
-          thr_pct <- combined_excursions[threshold == thr, .(pct = (sum(duration_sec) / 1800) * 100), by = starting_sp]
-          if (nrow(thr_pct)) {
-            setnames(thr_pct, c("SP", "pct"))
-            sp_series <- merge(sp_series, thr_pct, by = "SP", all.x = TRUE, suffixes = c("", ".thr"))
-            if ("pct.thr" %in% names(sp_series)) {
-              sp_series[, pct := pct.thr]
-              sp_series[, pct.thr := NULL]
-            }
+    p <- plot_ly()
+    for (thr in thresholds) {
+      sp_series <- data.table(SP = 1:48, pct = 0)
+      if (nrow(combined_excursions)) {
+        thr_pct <- combined_excursions[threshold == thr, .(pct = (sum(duration_sec) / 1800) * 100), by = starting_sp]
+        if (nrow(thr_pct)) {
+          setnames(thr_pct, c("SP", "pct"))
+          sp_series <- merge(sp_series, thr_pct, by = "SP", all.x = TRUE, suffixes = c("", ".thr"))
+          if ("pct.thr" %in% names(sp_series)) {
+            sp_series[, pct := pct.thr]
+            sp_series[, pct.thr := NULL]
           }
         }
-        sp_series[is.na(pct), pct := 0]
-        p <- p %>%
-          add_trace(
-            data = sp_series,
-            x = ~SP,
-            y = ~pct,
-            name = sprintf("%.2f Hz", thr),
-            type = "bar",
-            marker = list(color = getExcursionColor(thr))
-          )
       }
-
+      sp_series[is.na(pct), pct := 0]
       p <- p %>%
-        layout(
-          title = "Time in Excursion per SP",
-          xaxis = list(title = "Settlement Period (SP)", range = c(0.5, 48.5)),
-          yaxis = list(title = "Time in Excursion (%)"),
-          legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center"),
-          barmode = "group"
-        )
-
-      return(p)
-
-    } else {
-      data <- filteredExcursionData()
-      df <- data$daily
-      df <- df[threshold %in% thresholds]
-      if (nrow(df) == 0) {
-        return(excursionEmptyPlot("No data available for selected thresholds/date range.",
-                                  "Date", "Time in Excursion (%)"))
-      }
-
-      df[, duration_pct := (total_duration_sec / (24 * 3600)) * 100]
-
-      p <- plot_ly()
-      for (thr in thresholds) {
-        thr_df <- df[threshold == thr]
-        if (!nrow(thr_df)) next
-        p <- p %>% add_trace(
-          data = thr_df,
-          x = ~date,
-          y = ~duration_pct,
-          name = sprintf("%.2f Hz", thr),
+        add_trace(
+          data = sp_series,
+          x = ~SP,
+          y = ~pct,
+          name = sprintf("|Δf| ≥ %.2f Hz", thr),
           type = "bar",
-          marker = list(color = getExcursionColor(thr)),
-          hovertemplate = paste0(
-            "Date: %{x|%b %d, %Y}<br>",
-            sprintf("%.2f Hz: ", thr), "%{y:.2f}%<br>",
-            "<extra></extra>"
-          )
+          marker = list(color = getExcursionColor(thr))
         )
-      }
+    }
 
-      p <- p %>% layout(
-        title = "Daily Excursion Percentage",
-        xaxis = list(title = "Date"),
+    p <- p %>%
+      layout(
+        title = "Time in Excursion per SP",
+        xaxis = list(title = "Settlement Period (SP)", range = c(0.5, 48.5)),
         yaxis = list(title = "Time in Excursion (%)"),
         legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center"),
-        hovermode = "x unified",
         barmode = "group"
       )
 
-      return(p)
-
-    }
+    return(p)
   })
 
   output$excursionMonthlyCountPlot <- renderPlotly({
@@ -2901,116 +3018,55 @@ server <- function(input, output, session) {
   })
 
 
-  # SP Deviation Plot
+  # Plot 4: Frequency Deviation by Settlement Period (SP-level line plot)
   output$excursionSPDeviationPlot <- renderPlotly({
-    req(input$excursionStartDate, input$excursionEndDate)
+    req(input$excursionDailyDate)
 
     # Load SP boundary events
     sp_events <- eventData()
     sp_events[, date := as.Date(date)]
 
-    # Check if single day or multiple days
-    single_day <- input$excursionStartDate == input$excursionEndDate
+    # Get data for selected day
+    day_data <- sp_events[date == input$excursionDailyDate]
 
-    if (single_day) {
-      # Single day: line plot
-      day_data <- sp_events[date == input$excursionStartDate]
-
-      if (nrow(day_data) == 0) {
-        p <- ggplot() +
-          annotate("text", x = 0.5, y = 0.5,
-                   label = "No frequency data available for selected day",
-                   size = 6) +
-          theme_void()
-        return(ggplotly(p))
-      }
-
-      # Calculate average frequency and signed deviation
-      day_data[, avg_f := (min_f + max_f) / 2]
-      day_data[, deviation := round(avg_f - 50.0, 6)]
-
-      # Sort by SP to ensure proper line drawing
-      setorder(day_data, starting_sp)
-
-      # Create line plot
-      p <- plot_ly(day_data) %>%
-        add_trace(x = ~starting_sp, y = ~deviation, type = "scatter",
-                  mode = "lines",
-                  line = list(color = "black", width = 2),
-                  text = ~paste("SP:", starting_sp, "<br>Deviation:", round(deviation, 3), "Hz"),
-                  hoverinfo = "text", showlegend = FALSE,
-                  connectgaps = FALSE) %>%
-        layout(
-          xaxis = list(title = "Settlement Period (SP)", range = c(0.5, 48.5)),
-          yaxis = list(
-            title = "Frequency Deviation from 50 Hz (Hz)",
-            tickvals = c(-0.30, -0.25, -0.20, -0.15, -0.10, -0.05, 0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30),
-            ticktext = c("-0.30", "-0.25", "-0.20", "-0.15", "-0.10", "-0.05", "0", "0.05", "0.10", "0.15", "0.20", "0.25", "0.30"),
-            zeroline = TRUE,
-            zerolinecolor = "black",
-            zerolinewidth = 1,
-            range = c(-0.35, 0.35)
-          )
-        )
-
-      return(p)
-    } else {
-      # Multiple days: time series of daily deviation statistics
-      date_range_data <- sp_events[date >= input$excursionStartDate & date <= input$excursionEndDate]
-
-      if (nrow(date_range_data) == 0) {
-        p <- ggplot() +
-          annotate("text", x = 0.5, y = 0.5,
-                   label = "No frequency data available for selected date range",
-                   size = 6) +
-          theme_void()
-        return(ggplotly(p))
-      }
-
-      # Calculate average frequency and signed deviation
-      date_range_data[, avg_f := (min_f + max_f) / 2]
-      date_range_data[, deviation := round(avg_f - 50.0, 6)]
-
-      # Calculate daily statistics
-      daily_stats <- date_range_data[, .(
-        max_dev = max(deviation, na.rm = TRUE),
-        min_dev = min(deviation, na.rm = TRUE),
-        max_sp = starting_sp[which.max(deviation)],
-        min_sp = starting_sp[which.min(deviation)]
-      ), by = date]
-
-      setorder(daily_stats, date)
-
-      # Create time series plot
-      p <- plot_ly(daily_stats) %>%
-        add_trace(x = ~date, y = ~max_dev, name = "Max Deviation",
-                  type = "scatter", mode = "lines+markers",
-                  line = list(color = "#d62728", width = 2),
-                  marker = list(size = 4, color = "#d62728"),
-                  text = ~paste("Date:", date, "<br>Max Dev:", round(max_dev, 3), "Hz<br>At SP:", max_sp),
-                  hoverinfo = "text") %>%
-        add_trace(x = ~date, y = ~min_dev, name = "Min Deviation",
-                  type = "scatter", mode = "lines+markers",
-                  line = list(color = "#1f77b4", width = 2),
-                  marker = list(size = 4, color = "#1f77b4"),
-                  text = ~paste("Date:", date, "<br>Min Dev:", round(min_dev, 3), "Hz<br>At SP:", min_sp),
-                  hoverinfo = "text") %>%
-        layout(
-          title = "Daily Frequency Deviation Statistics",
-          xaxis = list(title = "Date"),
-          yaxis = list(
-            title = "Frequency Deviation from 50 Hz (Hz)",
-            zeroline = TRUE,
-            zerolinecolor = "black",
-            zerolinewidth = 1
-          ),
-          legend = list(x = 0.5, y = -0.2, orientation = "h", xanchor = "center"),
-          hovermode = "x unified",
-          barmode = "group"
-        )
-
-      return(p)
+    if (nrow(day_data) == 0) {
+      p <- ggplot() +
+        annotate("text", x = 0.5, y = 0.5,
+                 label = "No frequency data available for selected day",
+                 size = 6) +
+        theme_void()
+      return(ggplotly(p))
     }
+
+    # Calculate average frequency and signed deviation
+    day_data[, avg_f := (min_f + max_f) / 2]
+    day_data[, deviation := round(avg_f - 50.0, 6)]
+
+    # Sort by SP to ensure proper line drawing
+    setorder(day_data, starting_sp)
+
+    # Create line plot
+    p <- plot_ly(day_data) %>%
+      add_trace(x = ~starting_sp, y = ~deviation, type = "scatter",
+                mode = "lines",
+                line = list(color = "black", width = 2),
+                text = ~paste("SP:", starting_sp, "<br>Deviation:", round(deviation, 3), "Hz"),
+                hoverinfo = "text", showlegend = FALSE,
+                connectgaps = FALSE) %>%
+      layout(
+        xaxis = list(title = "Settlement Period (SP)", range = c(0.5, 48.5)),
+        yaxis = list(
+          title = "Frequency Deviation from 50 Hz (Hz)",
+          tickvals = c(-0.30, -0.25, -0.20, -0.15, -0.10, -0.05, 0, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30),
+          ticktext = c("-0.30", "-0.25", "-0.20", "-0.15", "-0.10", "-0.05", "0", "0.05", "0.10", "0.15", "0.20", "0.25", "0.30"),
+          zeroline = TRUE,
+          zerolinecolor = "black",
+          zerolinewidth = 1,
+          range = c(-0.35, 0.35)
+        )
+      )
+
+    return(p)
   })
 
   # --- Monthly Red Ratio Tab Logic ---
@@ -4492,12 +4548,15 @@ server <- function(input, output, session) {
     }
 
     df <- copy(df)
+    # Sort by month first to ensure proper ordering
+    setorder(df, month, threshold)
+
     df[, month_label := format(month, "%Y-%m")]
     df[, month_label := factor(month_label, levels = unique(month_label))]
-    df[, threshold_label := sprintf(">= %.2f Hz", threshold)]
+    df[, threshold_label := sprintf("|Δf| ≥ %.2f Hz", threshold)]
 
     color_levels <- unique(df$threshold)
-    color_map <- setNames(sapply(color_levels, getExcursionColor), sprintf(">= %.2f Hz", color_levels))
+    color_map <- setNames(sapply(color_levels, getExcursionColor), sprintf("|Δf| ≥ %.2f Hz", color_levels))
 
     p <- ggplot(df, aes(x = month_label, y = num_excursions, color = threshold_label, group = threshold_label)) +
       geom_line(linewidth = 1.1) +
@@ -4522,13 +4581,16 @@ server <- function(input, output, session) {
     }
 
     df <- copy(df)
+    # Sort by month first to ensure proper ordering
+    setorder(df, month, threshold)
+
     df[, month_label := format(month, "%Y-%m")]
     df[, month_label := factor(month_label, levels = unique(month_label))]
-    df[, threshold_label := sprintf(">= %.2f Hz", threshold)]
+    df[, threshold_label := sprintf("|Δf| ≥ %.2f Hz", threshold)]
     df[, duration_hours := total_duration_sec / 3600]
 
     color_levels <- unique(df$threshold)
-    color_map <- setNames(sapply(color_levels, getExcursionColor), sprintf(">= %.2f Hz", color_levels))
+    color_map <- setNames(sapply(color_levels, getExcursionColor), sprintf("|Δf| ≥ %.2f Hz", color_levels))
 
     p <- ggplot(df, aes(x = month_label, y = duration_hours, color = threshold_label, group = threshold_label)) +
       geom_line(linewidth = 1.1) +
@@ -4553,14 +4615,17 @@ server <- function(input, output, session) {
     }
 
     df <- copy(df)
+    # Sort by month first to ensure proper ordering
+    setorder(df, month, threshold)
+
     df[, month_label := format(month, "%Y-%m")]
     df[, month_label := factor(month_label, levels = unique(month_label))]
-    df[, threshold_label := sprintf(">= %.2f Hz", threshold)]
+    df[, threshold_label := sprintf("|Δf| ≥ %.2f Hz", threshold)]
     df[, total_seconds := lubridate::days_in_month(month) * 24 * 3600]
     df[, pct_time := pmin(100, (total_duration_sec / total_seconds) * 100)]
 
     color_levels <- unique(df$threshold)
-    color_map <- setNames(sapply(color_levels, getExcursionColor), sprintf(">= %.2f Hz", color_levels))
+    color_map <- setNames(sapply(color_levels, getExcursionColor), sprintf("|Δf| ≥ %.2f Hz", color_levels))
 
     p <- ggplot(df, aes(x = month_label, y = pct_time, color = threshold_label, group = threshold_label)) +
       geom_line(linewidth = 1.1) +
@@ -4598,25 +4663,32 @@ server <- function(input, output, session) {
     df_summary[, duration_hours := total_duration_sec / 3600]
     df_summary[, pct_time := pmin(100, (total_duration_sec / (days * 24 * 3600)) * 100)]
 
-    df_summary[, threshold_label := sprintf(">= %.2f Hz", threshold)]
+    # Add value column based on the metric requested
+    df_summary[, value := get(value_col)]
 
-    draw_df <- df_summary[, .(week_start, threshold_label, value = get(value_col)), by = .(week_start, threshold_label)]
-    draw_df <- draw_df[!is.na(value)]
-    if (nrow(draw_df) == 0) {
+    # Remove rows with NA values
+    df_summary <- df_summary[!is.na(value)]
+    if (nrow(df_summary) == 0) {
       return(excursionMonthlyEmptyPlot("No excursion data for selected metric"))
     }
 
-    color_levels <- unique(df_summary$threshold)
-    color_map <- setNames(sapply(color_levels, getExcursionColor), sprintf(">= %.2f Hz", color_levels))
+    # Create threshold labels
+    df_summary[, threshold_label := sprintf("|Δf| ≥ %.2f Hz", threshold)]
 
-    week_breaks <- sort(unique(draw_df$week_start))
+    # Sort by week_start and threshold to ensure proper line drawing
+    setorder(df_summary, week_start, threshold)
+
+    color_levels <- unique(df_summary$threshold)
+    color_map <- setNames(sapply(color_levels, getExcursionColor), sprintf("|Δf| ≥ %.2f Hz", color_levels))
+
+    week_breaks <- sort(unique(df_summary$week_start))
     if (length(week_breaks) > 14) {
       step <- ceiling(length(week_breaks) / 14)
       week_breaks <- week_breaks[seq(1, length(week_breaks), by = step)]
     }
     label_fun <- function(x) paste0("W", format(x, "%V"), "\n", format(x, "%d %b"))
 
-    p <- ggplot(draw_df, aes(x = week_start, y = value, color = threshold_label, group = threshold_label)) +
+    p <- ggplot(df_summary, aes(x = week_start, y = value, color = threshold_label, group = threshold_label)) +
       geom_line(linewidth = 1.1) +
       geom_point(size = 2.8) +
       scale_color_manual(values = color_map, name = "Threshold") +
@@ -4647,6 +4719,732 @@ server <- function(input, output, session) {
     df <- weeklyExcursionFilteredData()
     buildWeeklyExcursionPlot(df, "pct_time", "Percentage of Time (%)")
   })
+
+  # ============================================================================
+  # SIGNED EXCURSIONS (Directional Deviations)
+  # ============================================================================
+
+  # Helper function: Get color for signed excursion thresholds
+  getSignedExcursionColor <- function(threshold) {
+    threshold <- as.numeric(threshold)
+    if (threshold > 0) {
+      # Positive thresholds (above 50 Hz) - shades of red
+      if (threshold >= 0.2) return("#8B0000")  # Dark red
+      if (threshold >= 0.15) return("#DC143C") # Crimson
+      return("#FF6B6B")  # Light red
+    } else {
+      # Negative thresholds (below 50 Hz) - shades of blue
+      if (threshold <= -0.2) return("#00008B")  # Dark blue
+      if (threshold <= -0.15) return("#1E90FF") # Dodger blue
+      return("#6BB6FF")  # Light blue
+    }
+  }
+
+  # Helper function: Create empty plot for signed excursions
+  signedExcursionEmptyPlot <- function(message = "No data available", x_label = "", y_label = "") {
+    p <- ggplot() +
+      annotate("text", x = 0.5, y = 0.5, label = message, size = 5, color = "#999999") +
+      labs(x = x_label, y = y_label) +
+      theme_minimal() +
+      theme(
+        panel.grid = element_blank(),
+        axis.text = element_blank(),
+        axis.ticks = element_blank()
+      )
+    ggplotly(p) %>%
+      layout(xaxis = list(showgrid = FALSE), yaxis = list(showgrid = FALSE))
+  }
+
+  # Reactive: Selected thresholds for signed excursions
+  selectedSignedExcursionThresholds <- reactive({
+    thresholds <- input$signedExcursionThresholds
+    if (is.null(thresholds) || length(thresholds) == 0) {
+      return(numeric(0))
+    }
+    as.numeric(thresholds)
+  })
+
+  # Navigation: Previous Day button for signed excursions
+  observeEvent(input$signedExcursionDailyPrev, {
+    current_date <- input$signedExcursionDailyDate
+    if (!is.null(current_date)) {
+      new_date <- current_date - 1
+      if (new_date >= as.Date("2025-01-01")) {
+        updateDateInput(session, "signedExcursionDailyDate", value = new_date)
+      }
+    }
+  })
+
+  # Navigation: Next Day button for signed excursions
+  observeEvent(input$signedExcursionDailyNext, {
+    current_date <- input$signedExcursionDailyDate
+    if (!is.null(current_date)) {
+      new_date <- current_date + 1
+      if (new_date <= as.Date("2025-09-30")) {
+        updateDateInput(session, "signedExcursionDailyDate", value = new_date)
+      }
+    }
+  })
+
+  # Helper function: Detect signed excursions from frequency data
+  detectSignedExcursions <- function(freq_data, thresholds) {
+    if (nrow(freq_data) == 0 || length(thresholds) == 0) {
+      return(data.table())
+    }
+
+    # Calculate signed deviation (positive = above 50, negative = below 50)
+    freq_data[, signed_deviation := f - 50]
+    freq_data[, SP := ((hour(dtm_sec) * 2) + floor(minute(dtm_sec) / 30)) + 1]
+
+    all_excursions <- list()
+
+    for (threshold in thresholds) {
+      threshold_num <- as.numeric(threshold)
+
+      # Detect excursions based on sign
+      if (threshold_num > 0) {
+        # Positive threshold: deviation >= +threshold
+        freq_data[, is_excursion := signed_deviation >= threshold_num]
+      } else {
+        # Negative threshold: deviation <= threshold
+        freq_data[, is_excursion := signed_deviation <= threshold_num]
+      }
+
+      # Group consecutive excursions
+      freq_data[, excursion_change := c(0, diff(as.integer(is_excursion)))]
+      freq_data[, excursion_group := cumsum(excursion_change == 1)]
+      freq_data[is_excursion == FALSE, excursion_group := NA]
+
+      # Calculate excursion statistics per SP
+      sp_excursions <- freq_data[is_excursion == TRUE, .(
+        num_excursions = uniqueN(excursion_group),
+        total_duration_sec = .N,
+        threshold = threshold_num
+      ), by = SP]
+
+      all_excursions[[length(all_excursions) + 1]] <- sp_excursions
+    }
+
+    if (length(all_excursions) == 0) {
+      return(data.table())
+    }
+
+    rbindlist(all_excursions, fill = TRUE)
+  }
+
+  # DAILY VIEW: Number of Signed Excursions
+  output$signedExcursionCountPlot <- renderPlotly({
+    req(input$signedExcursionDailyDate)
+    input$updateSignedExcursionPlots  # Trigger on update button
+
+    thresholds <- selectedSignedExcursionThresholds()
+    if (!length(thresholds)) {
+      return(signedExcursionEmptyPlot("Enable at least one threshold to view excursions.",
+                                      "Settlement Period (SP)", "Count of Excursion Events"))
+    }
+
+    # Load per-second frequency data for the selected day
+    freq_data <- frequencyData()
+    freq_data[, date := as.Date(dtm_sec)]
+    day_freq <- freq_data[date == input$signedExcursionDailyDate]
+
+    if (nrow(day_freq) == 0) {
+      return(signedExcursionEmptyPlot("No data available for selected date.",
+                                      "Settlement Period (SP)", "Count of Excursion Events"))
+    }
+
+    # Detect signed excursions
+    sp_excursions <- detectSignedExcursions(copy(day_freq), thresholds)
+
+    if (nrow(sp_excursions) == 0) {
+      return(signedExcursionEmptyPlot("No excursions detected for selected thresholds.",
+                                      "Settlement Period (SP)", "Count of Excursion Events"))
+    }
+
+    # Prepare data for plotting
+    sp_excursions[, threshold_label := ifelse(threshold >= 0,
+                                               sprintf("Δf ≥ +%.2f Hz", threshold),
+                                               sprintf("Δf ≤ %.2f Hz", threshold))]
+
+    # Create complete grid of all SPs and thresholds
+    all_sps <- data.table(SP = 1:48)
+    all_combinations <- CJ(SP = 1:48, threshold = thresholds)
+    sp_excursions_full <- merge(all_combinations, sp_excursions, by = c("SP", "threshold"), all.x = TRUE)
+    sp_excursions_full[is.na(num_excursions), num_excursions := 0]
+    sp_excursions_full[, threshold_label := ifelse(threshold >= 0,
+                                                    sprintf("Δf ≥ +%.2f Hz", threshold),
+                                                    sprintf("Δf ≤ %.2f Hz", threshold))]
+
+    # Build plot
+    p <- plot_ly()
+    for (thr in sort(thresholds)) {
+      sp_series <- sp_excursions_full[threshold == thr]
+      p <- p %>%
+        add_trace(
+          data = sp_series,
+          x = ~SP,
+          y = ~num_excursions,
+          name = unique(sp_series$threshold_label),
+          type = "bar",
+          marker = list(color = getSignedExcursionColor(thr))
+        )
+    }
+
+    p %>%
+      layout(
+        title = list(text = sprintf("Signed Excursions for %s", input$signedExcursionDailyDate),
+                     font = list(size = 14)),
+        xaxis = list(title = "Settlement Period (SP)", dtick = 1),
+        yaxis = list(title = "Count of Excursion Events"),
+        barmode = "group",
+        legend = list(orientation = "h", x = 0.5, y = -0.15, xanchor = "center"),
+        hovermode = "x unified"
+      )
+  })
+
+  # DAILY VIEW: Total Duration of Signed Excursions
+  output$signedExcursionDailyDurationPlot <- renderPlotly({
+    req(input$signedExcursionDailyDate)
+    input$updateSignedExcursionPlots
+
+    thresholds <- selectedSignedExcursionThresholds()
+    if (!length(thresholds)) {
+      return(signedExcursionEmptyPlot("Enable at least one threshold to view excursions.",
+                                      "Settlement Period (SP)", "Total Duration (seconds)"))
+    }
+
+    freq_data <- frequencyData()
+    freq_data[, date := as.Date(dtm_sec)]
+    day_freq <- freq_data[date == input$signedExcursionDailyDate]
+
+    if (nrow(day_freq) == 0) {
+      return(signedExcursionEmptyPlot("No data available for selected date.",
+                                      "Settlement Period (SP)", "Total Duration (seconds)"))
+    }
+
+    sp_excursions <- detectSignedExcursions(copy(day_freq), thresholds)
+
+    if (nrow(sp_excursions) == 0) {
+      return(signedExcursionEmptyPlot("No excursions detected for selected thresholds.",
+                                      "Settlement Period (SP)", "Total Duration (seconds)"))
+    }
+
+    sp_excursions[, threshold_label := ifelse(threshold >= 0,
+                                               sprintf("Δf ≥ +%.2f Hz", threshold),
+                                               sprintf("Δf ≤ %.2f Hz", threshold))]
+
+    all_combinations <- CJ(SP = 1:48, threshold = thresholds)
+    sp_excursions_full <- merge(all_combinations, sp_excursions, by = c("SP", "threshold"), all.x = TRUE)
+    sp_excursions_full[is.na(total_duration_sec), total_duration_sec := 0]
+    sp_excursions_full[, threshold_label := ifelse(threshold >= 0,
+                                                    sprintf("Δf ≥ +%.2f Hz", threshold),
+                                                    sprintf("Δf ≤ %.2f Hz", threshold))]
+
+    p <- plot_ly()
+    for (thr in sort(thresholds)) {
+      sp_series <- sp_excursions_full[threshold == thr]
+      p <- p %>%
+        add_trace(
+          data = sp_series,
+          x = ~SP,
+          y = ~total_duration_sec,
+          name = unique(sp_series$threshold_label),
+          type = "bar",
+          marker = list(color = getSignedExcursionColor(thr))
+        )
+    }
+
+    p %>%
+      layout(
+        title = list(text = sprintf("Duration of Signed Excursions for %s", input$signedExcursionDailyDate),
+                     font = list(size = 14)),
+        xaxis = list(title = "Settlement Period (SP)", dtick = 1),
+        yaxis = list(title = "Total Duration (seconds)"),
+        barmode = "group",
+        legend = list(orientation = "h", x = 0.5, y = -0.15, xanchor = "center"),
+        hovermode = "x unified"
+      )
+  })
+
+  # DAILY VIEW: Percentage of Time in Signed Excursion
+  output$signedExcursionPercentagePlot <- renderPlotly({
+    req(input$signedExcursionDailyDate)
+    input$updateSignedExcursionPlots
+
+    thresholds <- selectedSignedExcursionThresholds()
+    if (!length(thresholds)) {
+      return(signedExcursionEmptyPlot("Enable at least one threshold to view excursions.",
+                                      "Settlement Period (SP)", "Percentage of Time (%)"))
+    }
+
+    freq_data <- frequencyData()
+    freq_data[, date := as.Date(dtm_sec)]
+    day_freq <- freq_data[date == input$signedExcursionDailyDate]
+
+    if (nrow(day_freq) == 0) {
+      return(signedExcursionEmptyPlot("No data available for selected date.",
+                                      "Settlement Period (SP)", "Percentage of Time (%)"))
+    }
+
+    sp_excursions <- detectSignedExcursions(copy(day_freq), thresholds)
+
+    if (nrow(sp_excursions) == 0) {
+      return(signedExcursionEmptyPlot("No excursions detected for selected thresholds.",
+                                      "Settlement Period (SP)", "Percentage of Time (%)"))
+    }
+
+    # Calculate percentage (30 minutes = 1800 seconds per SP)
+    sp_excursions[, pct_time := pmin(100, (total_duration_sec / 1800) * 100)]
+    sp_excursions[, threshold_label := ifelse(threshold >= 0,
+                                               sprintf("Δf ≥ +%.2f Hz", threshold),
+                                               sprintf("Δf ≤ %.2f Hz", threshold))]
+
+    all_combinations <- CJ(SP = 1:48, threshold = thresholds)
+    sp_excursions_full <- merge(all_combinations, sp_excursions, by = c("SP", "threshold"), all.x = TRUE)
+    sp_excursions_full[is.na(pct_time), pct_time := 0]
+    sp_excursions_full[, threshold_label := ifelse(threshold >= 0,
+                                                    sprintf("Δf ≥ +%.2f Hz", threshold),
+                                                    sprintf("Δf ≤ %.2f Hz", threshold))]
+
+    p <- plot_ly()
+    for (thr in sort(thresholds)) {
+      sp_series <- sp_excursions_full[threshold == thr]
+      p <- p %>%
+        add_trace(
+          data = sp_series,
+          x = ~SP,
+          y = ~pct_time,
+          name = unique(sp_series$threshold_label),
+          type = "bar",
+          marker = list(color = getSignedExcursionColor(thr))
+        )
+    }
+
+    p %>%
+      layout(
+        title = list(text = sprintf("Percentage Time in Signed Excursion for %s", input$signedExcursionDailyDate),
+                     font = list(size = 14)),
+        xaxis = list(title = "Settlement Period (SP)", dtick = 1),
+        yaxis = list(title = "Percentage of Time (%)"),
+        barmode = "group",
+        legend = list(orientation = "h", x = 0.5, y = -0.15, xanchor = "center"),
+        hovermode = "x unified"
+      )
+  })
+
+  # Date inputs for Weekly view
+  output$signedExcursionWeeklyStartUI <- renderUI({
+    freq_data <- frequencyData()
+    if (nrow(freq_data) == 0) {
+      return(tags$p("No frequency data available", style = "color: #999; font-style: italic;"))
+    }
+    freq_data[, date := as.Date(dtm_sec)]
+    min_week <- suppressWarnings(lubridate::floor_date(min(freq_data$date, na.rm = TRUE), unit = "week", week_start = 1))
+    max_week <- suppressWarnings(lubridate::floor_date(max(freq_data$date, na.rm = TRUE), unit = "week", week_start = 1))
+    dateInput(
+      "signedExcursionWeeklyStart",
+      "Start Week:",
+      value = min_week,
+      min = min_week,
+      max = max_week,
+      startview = "month",
+      format = "yyyy-mm-dd"
+    )
+  })
+
+  output$signedExcursionWeeklyEndUI <- renderUI({
+    freq_data <- frequencyData()
+    if (nrow(freq_data) == 0) {
+      return(tags$p("No frequency data available", style = "color: #999; font-style: italic;"))
+    }
+    freq_data[, date := as.Date(dtm_sec)]
+    min_week <- suppressWarnings(lubridate::floor_date(min(freq_data$date, na.rm = TRUE), unit = "week", week_start = 1))
+    max_week <- suppressWarnings(lubridate::floor_date(max(freq_data$date, na.rm = TRUE), unit = "week", week_start = 1))
+    dateInput(
+      "signedExcursionWeeklyEnd",
+      "End Week:",
+      value = max_week,
+      min = min_week,
+      max = max_week,
+      startview = "month",
+      format = "yyyy-mm-dd"
+    )
+  })
+
+  # Reactive: Calculate signed excursion statistics for all days
+  signedExcursionDailyStats <- eventReactive(list(input$updateSignedExcursionWeekly, input$signedExcursionWeeklyThresholds), {
+    thresholds <- as.numeric(input$signedExcursionWeeklyThresholds)
+    if (length(thresholds) == 0) {
+      return(data.table())
+    }
+
+    freq_data <- frequencyData()
+    if (nrow(freq_data) == 0) {
+      return(data.table())
+    }
+
+    freq_data[, date := as.Date(dtm_sec)]
+    all_dates <- unique(freq_data$date)
+
+    daily_results <- list()
+
+    for (current_date in all_dates) {
+      # Convert back to Date class (loop iteration converts to numeric)
+      current_date_obj <- as.Date(current_date, origin = "1970-01-01")
+      day_freq <- freq_data[date == current_date_obj]
+      day_excursions <- detectSignedExcursions(copy(day_freq), thresholds)
+
+      if (nrow(day_excursions) > 0) {
+        day_summary <- day_excursions[, .(
+          num_excursions = sum(num_excursions, na.rm = TRUE),
+          total_duration_sec = sum(total_duration_sec, na.rm = TRUE)
+        ), by = threshold]
+        day_summary[, date := current_date_obj]
+        daily_results[[length(daily_results) + 1]] <- day_summary
+      }
+    }
+
+    if (length(daily_results) == 0) {
+      return(data.table())
+    }
+
+    result <- rbindlist(daily_results, fill = TRUE)
+    # Ensure date column is properly typed as Date
+    result[, date := as.Date(date, origin = "1970-01-01")]
+    return(result)
+  }, ignoreNULL = FALSE)
+
+  # Filtered data for Weekly plots
+  weeklySignedExcursionFilteredData <- reactive({
+    req(input$signedExcursionWeeklyStart, input$signedExcursionWeeklyEnd)
+
+    df <- signedExcursionDailyStats()
+    if (nrow(df) == 0) {
+      return(data.table())
+    }
+
+    start_week <- lubridate::floor_date(input$signedExcursionWeeklyStart, unit = "week", week_start = 1)
+    end_week <- lubridate::floor_date(input$signedExcursionWeeklyEnd, unit = "week", week_start = 1) + days(6)
+
+    df[date >= start_week & date <= end_week]
+  })
+
+  # Helper function: Build weekly signed excursion plots
+  buildWeeklySignedExcursionPlot <- function(df, value_col, y_label) {
+    if (is.null(df) || nrow(df) == 0) {
+      return(signedExcursionEmptyPlot("No excursion data for selected range"))
+    }
+
+    df <- copy(df)
+    df[, week_start := lubridate::floor_date(date, unit = "week", week_start = 1)]
+    df_summary <- df[, .(
+      num_excursions = sum(num_excursions, na.rm = TRUE),
+      total_duration_sec = sum(total_duration_sec, na.rm = TRUE),
+      days = .N
+    ), by = .(week_start, threshold)]
+
+    if (nrow(df_summary) == 0) {
+      return(signedExcursionEmptyPlot("No excursion data for selected range"))
+    }
+
+    # Calculate metrics and set value column based on requested metric
+    if (value_col == "num_excursions") {
+      df_summary[, value := num_excursions]
+    } else if (value_col == "duration_hours") {
+      df_summary[, duration_hours := total_duration_sec / 3600]
+      df_summary[, value := duration_hours]
+    } else if (value_col == "pct_time") {
+      df_summary[, total_seconds := days * 24 * 3600]
+      df_summary[, pct_time := pmin(100, (total_duration_sec / total_seconds) * 100)]
+      df_summary[, value := pct_time]
+    }
+
+    df_summary <- df_summary[!is.na(value)]
+    df_summary[, threshold_label := ifelse(threshold >= 0,
+                                            sprintf("Δf ≥ +%.2f Hz", threshold),
+                                            sprintf("Δf ≤ %.2f Hz", threshold))]
+
+    setorder(df_summary, week_start, threshold)
+
+    color_levels <- unique(df_summary$threshold)
+    color_map <- setNames(sapply(color_levels, getSignedExcursionColor),
+                          ifelse(color_levels >= 0,
+                                 sprintf("Δf ≥ +%.2f Hz", color_levels),
+                                 sprintf("Δf ≤ %.2f Hz", color_levels)))
+
+    week_breaks <- unique(df_summary$week_start)
+    if (length(week_breaks) > 14) {
+      step <- ceiling(length(week_breaks) / 14)
+      week_breaks <- week_breaks[seq(1, length(week_breaks), by = step)]
+    }
+    label_fun <- function(x) paste0("W", format(x, "%V"), "\n", format(x, "%d %b"))
+
+    p <- ggplot(df_summary, aes(x = week_start, y = value, color = threshold_label, group = threshold_label)) +
+      geom_line(linewidth = 1.1) +
+      geom_point(size = 2.8) +
+      scale_color_manual(values = color_map, name = "Threshold") +
+      scale_x_date(breaks = week_breaks, labels = label_fun) +
+      labs(x = "Week Starting", y = y_label) +
+      theme_minimal(base_size = 11) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+    ggplotly(p, tooltip = c("x", "y", "colour")) %>%
+      layout(
+        xaxis = list(title = "Week Starting"),
+        yaxis = list(title = y_label),
+        legend = list(orientation = "h", x = 0.5, y = -0.25, xanchor = "center")
+      )
+  }
+
+  # WEEKLY VIEW: Plots
+  output$signedExcursionWeeklyCountPlot <- renderPlotly({
+    df <- weeklySignedExcursionFilteredData()
+    buildWeeklySignedExcursionPlot(df, "num_excursions", "Number of Excursions")
+  })
+
+  output$signedExcursionWeeklyDurationPlot <- renderPlotly({
+    df <- weeklySignedExcursionFilteredData()
+    buildWeeklySignedExcursionPlot(df, "duration_hours", "Duration (hours)")
+  })
+
+  output$signedExcursionWeeklyPercentagePlot <- renderPlotly({
+    df <- weeklySignedExcursionFilteredData()
+    buildWeeklySignedExcursionPlot(df, "pct_time", "Percentage of Time (%)")
+  })
+
+  # Date inputs for Monthly view
+  output$signedExcursionMonthlyStartUI <- renderUI({
+    freq_data <- frequencyData()
+    if (nrow(freq_data) == 0) {
+      return(tags$p("No frequency data available", style = "color: #999; font-style: italic;"))
+    }
+    freq_data[, date := as.Date(dtm_sec)]
+    min_month <- suppressWarnings(lubridate::floor_date(min(freq_data$date, na.rm = TRUE), unit = "month"))
+    max_month <- suppressWarnings(lubridate::floor_date(max(freq_data$date, na.rm = TRUE), unit = "month"))
+    dateInput(
+      "signedExcursionMonthlyStart",
+      "Start Month:",
+      value = min_month,
+      min = min_month,
+      max = max_month,
+      startview = "year",
+      format = "yyyy-mm"
+    )
+  })
+
+  output$signedExcursionMonthlyEndUI <- renderUI({
+    freq_data <- frequencyData()
+    if (nrow(freq_data) == 0) {
+      return(tags$p("No frequency data available", style = "color: #999; font-style: italic;"))
+    }
+    freq_data[, date := as.Date(dtm_sec)]
+    min_month <- suppressWarnings(lubridate::floor_date(min(freq_data$date, na.rm = TRUE), unit = "month"))
+    max_month <- suppressWarnings(lubridate::floor_date(max(freq_data$date, na.rm = TRUE), unit = "month"))
+    dateInput(
+      "signedExcursionMonthlyEnd",
+      "End Month:",
+      value = max_month,
+      min = min_month,
+      max = max_month,
+      startview = "year",
+      format = "yyyy-mm"
+    )
+  })
+
+  # Reactive: Calculate signed excursion statistics for all days (for Monthly view)
+  signedExcursionMonthlyDailyStats <- eventReactive(list(input$updateSignedExcursionMonthly, input$signedExcursionMonthlyThresholds), {
+    thresholds <- as.numeric(input$signedExcursionMonthlyThresholds)
+    if (length(thresholds) == 0) {
+      return(data.table())
+    }
+
+    freq_data <- frequencyData()
+    if (nrow(freq_data) == 0) {
+      return(data.table())
+    }
+
+    freq_data[, date := as.Date(dtm_sec)]
+    all_dates <- unique(freq_data$date)
+
+    daily_results <- list()
+
+    for (current_date in all_dates) {
+      # Convert back to Date class (loop iteration converts to numeric)
+      current_date_obj <- as.Date(current_date, origin = "1970-01-01")
+      day_freq <- freq_data[date == current_date_obj]
+      day_excursions <- detectSignedExcursions(copy(day_freq), thresholds)
+
+      if (nrow(day_excursions) > 0) {
+        day_summary <- day_excursions[, .(
+          num_excursions = sum(num_excursions, na.rm = TRUE),
+          total_duration_sec = sum(total_duration_sec, na.rm = TRUE)
+        ), by = threshold]
+        day_summary[, date := current_date_obj]
+        daily_results[[length(daily_results) + 1]] <- day_summary
+      }
+    }
+
+    if (length(daily_results) == 0) {
+      return(data.table())
+    }
+
+    result <- rbindlist(daily_results, fill = TRUE)
+    # Ensure date column is properly typed as Date
+    result[, date := as.Date(date, origin = "1970-01-01")]
+    return(result)
+  }, ignoreNULL = FALSE)
+
+  # MONTHLY VIEW: Calculations
+  monthlySignedExcursionData <- reactive({
+    req(input$signedExcursionMonthlyStart, input$signedExcursionMonthlyEnd)
+
+    df <- signedExcursionMonthlyDailyStats()
+    if (nrow(df) == 0) {
+      return(data.table())
+    }
+
+    # Filter by month range
+    start_month <- lubridate::floor_date(as.Date(input$signedExcursionMonthlyStart), unit = "month")
+    end_month <- lubridate::floor_date(as.Date(input$signedExcursionMonthlyEnd), unit = "month")
+    end_month <- lubridate::ceiling_date(end_month, unit = "month") - lubridate::days(1)
+
+    df <- df[date >= start_month & date <= end_month]
+
+    if (nrow(df) == 0) {
+      return(data.table())
+    }
+
+    df <- copy(df)
+    df[, month := lubridate::floor_date(date, unit = "month")]
+
+    monthly_summary <- df[, .(
+      num_excursions = sum(num_excursions, na.rm = TRUE),
+      total_duration_sec = sum(total_duration_sec, na.rm = TRUE),
+      days = .N
+    ), by = .(month, threshold)]
+
+    monthly_summary
+  })
+
+  # MONTHLY VIEW: Count Plot
+  output$signedExcursionMonthlyCountPlot <- renderPlotly({
+    df <- monthlySignedExcursionData()
+    if (is.null(df) || nrow(df) == 0) {
+      return(signedExcursionEmptyPlot("No excursion data available"))
+    }
+
+    df <- copy(df)
+    setorder(df, month, threshold)
+
+    df[, month_label := format(month, "%Y-%m")]
+    df[, month_label := factor(month_label, levels = unique(month_label))]
+    df[, threshold_label := ifelse(threshold >= 0,
+                                    sprintf("Δf ≥ +%.2f Hz", threshold),
+                                    sprintf("Δf ≤ %.2f Hz", threshold))]
+
+    color_levels <- unique(df$threshold)
+    color_map <- setNames(sapply(color_levels, getSignedExcursionColor),
+                          ifelse(color_levels >= 0,
+                                 sprintf("Δf ≥ +%.2f Hz", color_levels),
+                                 sprintf("Δf ≤ %.2f Hz", color_levels)))
+
+    p <- ggplot(df, aes(x = month_label, y = num_excursions, color = threshold_label, group = threshold_label)) +
+      geom_line(linewidth = 1.1) +
+      geom_point(size = 3) +
+      scale_color_manual(values = color_map, name = "Threshold") +
+      labs(x = "Month", y = "Number of Excursions") +
+      theme_minimal(base_size = 11) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+    ggplotly(p, tooltip = c("x", "y", "colour")) %>%
+      layout(
+        xaxis = list(title = "Month"),
+        yaxis = list(title = "Number of Excursions"),
+        legend = list(orientation = "h", x = 0.5, y = -0.25, xanchor = "center")
+      )
+  })
+
+  # MONTHLY VIEW: Duration Plot
+  output$signedExcursionMonthlyDurationPlot <- renderPlotly({
+    df <- monthlySignedExcursionData()
+    if (is.null(df) || nrow(df) == 0) {
+      return(signedExcursionEmptyPlot("No excursion data available"))
+    }
+
+    df <- copy(df)
+    setorder(df, month, threshold)
+
+    df[, month_label := format(month, "%Y-%m")]
+    df[, month_label := factor(month_label, levels = unique(month_label))]
+    df[, threshold_label := ifelse(threshold >= 0,
+                                    sprintf("Δf ≥ +%.2f Hz", threshold),
+                                    sprintf("Δf ≤ %.2f Hz", threshold))]
+    df[, duration_hours := total_duration_sec / 3600]
+
+    color_levels <- unique(df$threshold)
+    color_map <- setNames(sapply(color_levels, getSignedExcursionColor),
+                          ifelse(color_levels >= 0,
+                                 sprintf("Δf ≥ +%.2f Hz", color_levels),
+                                 sprintf("Δf ≤ %.2f Hz", color_levels)))
+
+    p <- ggplot(df, aes(x = month_label, y = duration_hours, color = threshold_label, group = threshold_label)) +
+      geom_line(linewidth = 1.1) +
+      geom_point(size = 3) +
+      scale_color_manual(values = color_map, name = "Threshold") +
+      labs(x = "Month", y = "Duration (hours)") +
+      theme_minimal(base_size = 11) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+    ggplotly(p, tooltip = c("x", "y", "colour")) %>%
+      layout(
+        xaxis = list(title = "Month"),
+        yaxis = list(title = "Duration (hours)"),
+        legend = list(orientation = "h", x = 0.5, y = -0.25, xanchor = "center")
+      )
+  })
+
+  # MONTHLY VIEW: Percentage Plot
+  output$signedExcursionMonthlyPercentagePlot <- renderPlotly({
+    df <- monthlySignedExcursionData()
+    if (is.null(df) || nrow(df) == 0) {
+      return(signedExcursionEmptyPlot("No excursion data available"))
+    }
+
+    df <- copy(df)
+    setorder(df, month, threshold)
+
+    df[, month_label := format(month, "%Y-%m")]
+    df[, month_label := factor(month_label, levels = unique(month_label))]
+    df[, threshold_label := ifelse(threshold >= 0,
+                                    sprintf("Δf ≥ +%.2f Hz", threshold),
+                                    sprintf("Δf ≤ %.2f Hz", threshold))]
+    df[, total_seconds := lubridate::days_in_month(month) * 24 * 3600]
+    df[, pct_time := pmin(100, (total_duration_sec / total_seconds) * 100)]
+
+    color_levels <- unique(df$threshold)
+    color_map <- setNames(sapply(color_levels, getSignedExcursionColor),
+                          ifelse(color_levels >= 0,
+                                 sprintf("Δf ≥ +%.2f Hz", color_levels),
+                                 sprintf("Δf ≤ %.2f Hz", color_levels)))
+
+    p <- ggplot(df, aes(x = month_label, y = pct_time, color = threshold_label, group = threshold_label)) +
+      geom_line(linewidth = 1.1) +
+      geom_point(size = 3) +
+      scale_color_manual(values = color_map, name = "Threshold") +
+      labs(x = "Month", y = "Percentage of Time (%)") +
+      theme_minimal(base_size = 11) +
+      theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+    ggplotly(p, tooltip = c("x", "y", "colour")) %>%
+      layout(
+        xaxis = list(title = "Month"),
+        yaxis = list(title = "Percentage of Time (%)"),
+        legend = list(orientation = "h", x = 0.5, y = -0.25, xanchor = "center")
+      )
+  })
+
+  # End of Signed Excursions section
+  # ============================================================================
 
   # Panel 2: Monthly Frequency Excursion Percentage by Threshold
   output$monthlyRedRatio <- renderPlotly({
@@ -4684,7 +5482,11 @@ server <- function(input, output, session) {
     df_filtered[, excursion_percentage := (total_duration_sec / total_seconds_in_month) * 100]
 
     # Create threshold labels
-    df_filtered[, threshold_label := paste0(">= ", threshold, " Hz")]
+    df_filtered[, threshold_label := sprintf("|Δf| ≥ %.2f Hz", threshold)]
+
+    # Create color map dynamically
+    color_levels <- unique(df_filtered$threshold)
+    color_map <- setNames(sapply(color_levels, getExcursionColor), sprintf("|Δf| ≥ %.2f Hz", color_levels))
 
     # Order months chronologically
     df_filtered <- df_filtered[order(month)]
@@ -4696,11 +5498,7 @@ server <- function(input, output, session) {
       geom_point(size = 3) +
       scale_color_manual(
         name = "Excursion Threshold",
-        values = c(
-          ">= 0.1 Hz" = "#1f77b4",
-          ">= 0.15 Hz" = "#ff7f0e",
-          ">= 0.2 Hz" = "#d62728"
-        )
+        values = color_map
       ) +
       labs(
         x = "Month",
